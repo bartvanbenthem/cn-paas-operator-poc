@@ -15,9 +15,20 @@
 // Adapter implements internal/reconciler's Adapter interface, so the actual
 // reconciliation loop (finalizers, SSA, status-mirroring) lives once in
 // internal/reconciler and is shared with every other vendor integration.
+//
+// ExtraResources additionally creates a Prometheus Operator ServiceMonitor
+// and a grafana-operator GrafanaDashboard alongside a monitored
+// RabbitmqCluster (gated on spec.monitoring.enablePodMonitor), so the
+// namespace-scoped Prometheus and Grafana pick them up automatically -- see
+// internal/prometheus's package doc for the namespace-scoping convention
+// and internal/grafana's for the instanceSelector/datasource one. See
+// crd-prometheus-servicemonitor-v0.93.1.yaml and
+// crd-grafana-dashboard-v5.25.0.yaml at the repo root for the schemas this
+// was built against.
 package rabbitmq
 
 import (
+	_ "embed"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -27,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	paasv1alpha1 "github.com/bartvanbenthem/paas-operator/api/v1alpha1"
+	"github.com/bartvanbenthem/paas-operator/internal/grafana"
 	"github.com/bartvanbenthem/paas-operator/internal/ingress"
 	"github.com/bartvanbenthem/paas-operator/internal/reconciler"
 )
@@ -49,11 +61,43 @@ const (
 	// contract (https://www.rabbitmq.com/kubernetes/operator/using-operator),
 	// not something this operator guesses at.
 	managementPort = 15672
+
+	// metricsPort is the RabbitmqCluster's Prometheus metrics port, exposed
+	// by the same auto-generated Service as managementPort.
+	// rabbitmq_prometheus is one of the RabbitMQ Cluster Operator's
+	// always-on essential plugins (alongside rabbitmq_management and
+	// rabbitmq_peer_discovery_k8s), documented at the same URL as
+	// managementPort -- no opt-in on the RabbitmqCluster spec is needed to
+	// make this port live, only to scrape it.
+	metricsPort = 15692
 )
 
 // GVK is the GroupVersionKind of the RabbitMQ Cluster Operator's
 // RabbitmqCluster this operator manages.
 var GVK = schema.GroupVersionKind{Group: Group, Version: Version, Kind: Kind}
+
+// serviceMonitorGVK is the GroupVersionKind of the Prometheus Operator
+// ServiceMonitor this adapter creates alongside a monitored RabbitmqCluster.
+// The RabbitMQ Cluster Operator creates no ServiceMonitor of its own (unlike
+// CNPG/mariadb-operator), so this operator builds one directly, targeting
+// the RabbitmqCluster's own auto-generated, same-named Service.
+var serviceMonitorGVK = schema.GroupVersionKind{Group: "monitoring.coreos.com", Version: "v1", Kind: "ServiceMonitor"}
+
+// dashboardGVK is the GroupVersionKind of the grafana-operator
+// GrafanaDashboard this adapter creates alongside a monitored
+// RabbitmqCluster.
+var dashboardGVK = schema.GroupVersionKind{Group: grafana.Group, Version: grafana.Version, Kind: "GrafanaDashboard"}
+
+// dashboardJSON is Team RabbitMQ's official "RabbitMQ-Overview" Grafana
+// dashboard (https://grafana.com/grafana/dashboards/10991, revision 15),
+// vendored verbatim -- linked from rabbitmq.com's own Prometheus/Grafana
+// monitoring guide (https://www.rabbitmq.com/docs/prometheus). Its panels
+// reference the Prometheus datasource via the templated input
+// "${DS_PROMETHEUS}", resolved by GrafanaDashboard's own spec.datasources --
+// see ExtraResources below.
+//
+//go:embed dashboards/overview.json
+var dashboardJSON string
 
 // Adapter drives a paas RabbitMQCluster onto a same-named RabbitMQ Cluster
 // Operator RabbitmqCluster. It implements
@@ -69,6 +113,15 @@ func (Adapter) TargetName(crName string) string { return crName }
 
 func (Adapter) ObjectKind() string   { return "RabbitmqCluster" }
 func (Adapter) FieldManager() string { return FieldManager }
+
+// commonLabels returns the app.kubernetes.io/managed-by + paas.example.com/owner
+// pair every object this adapter creates carries.
+func commonLabels(owner string) map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/managed-by": FieldManager,
+		"paas.example.com/owner":       owner,
+	}
+}
 
 func resourceListJSON(list corev1.ResourceList) map[string]any {
 	if len(list) == 0 {
@@ -121,29 +174,72 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.RabbitMQCluster, name, namespace, 
 	u.SetGroupVersionKind(GVK)
 	u.SetName(name)
 	u.SetNamespace(namespace)
-	u.SetLabels(map[string]string{
-		"app.kubernetes.io/managed-by": FieldManager,
-		"paas.example.com/owner":       ownerName,
-	})
+	u.SetLabels(commonLabels(ownerName))
 	u.Object["spec"] = clusterSpec
 
 	return u
 }
 
 // ExtraResources builds the Ingress fronting the RabbitmqCluster's
-// management UI, when requested. Implements
+// management UI (when requested), plus the ServiceMonitor and
+// GrafanaDashboard driven by spec.monitoring.enablePodMonitor. Implements
 // reconciler.ExtraResourcesAdapter[paasv1alpha1.RabbitMQCluster, *paasv1alpha1.RabbitMQCluster].
 func (Adapter) ExtraResources(cr *paasv1alpha1.RabbitMQCluster, targetName, namespace, owner string) []reconciler.ExtraResource {
-	name := targetName + "-ingress"
+	ingressName := targetName + "-ingress"
+	serviceMonitorName := targetName + "-servicemonitor"
+	dashboardName := targetName + "-dashboard"
 
-	var desired *unstructured.Unstructured
+	var desiredIngress *unstructured.Unstructured
 	if cr.Spec.Ingress != nil {
-		desired = ingress.Build(cr.Spec.Ingress, name, namespace, owner, FieldManager, targetName, managementPort)
+		desiredIngress = ingress.Build(cr.Spec.Ingress, ingressName, namespace, owner, FieldManager, targetName, managementPort)
 	}
 
-	return []reconciler.ExtraResource{
-		{GVK: ingress.GVK, Name: name, Desired: desired},
+	extras := []reconciler.ExtraResource{
+		{GVK: ingress.GVK, Name: ingressName, Desired: desiredIngress},
 	}
+
+	if !cr.Spec.Monitoring.EnablePodMonitor {
+		return append(extras,
+			reconciler.ExtraResource{GVK: serviceMonitorGVK, Name: serviceMonitorName, Desired: nil},
+			reconciler.ExtraResource{GVK: dashboardGVK, Name: dashboardName, Desired: nil},
+		)
+	}
+
+	serviceMonitor := &unstructured.Unstructured{}
+	serviceMonitor.SetGroupVersionKind(serviceMonitorGVK)
+	serviceMonitor.SetName(serviceMonitorName)
+	serviceMonitor.SetNamespace(namespace)
+	serviceMonitor.SetLabels(commonLabels(owner))
+	serviceMonitor.Object["spec"] = map[string]any{
+		// app.kubernetes.io/name=<RabbitmqCluster name> is a documented
+		// label the RabbitMQ Cluster Operator always applies to its own
+		// generated Service (https://www.rabbitmq.com/kubernetes/operator/using-operator#labels).
+		"selector": map[string]any{
+			"matchLabels": map[string]any{"app.kubernetes.io/name": targetName},
+		},
+		"endpoints": []any{
+			map[string]any{"targetPort": int64(metricsPort)},
+		},
+	}
+
+	dashboard := &unstructured.Unstructured{}
+	dashboard.SetGroupVersionKind(dashboardGVK)
+	dashboard.SetName(dashboardName)
+	dashboard.SetNamespace(namespace)
+	dashboard.SetLabels(commonLabels(owner))
+	dashboard.Object["spec"] = map[string]any{
+		"instanceSelector": grafana.InstanceSelector(namespace),
+		"folder":           "RabbitMQ",
+		"datasources": []any{
+			map[string]any{"inputName": "DS_PROMETHEUS", "datasourceName": grafana.DatasourceUID},
+		},
+		"json": dashboardJSON,
+	}
+
+	return append(extras,
+		reconciler.ExtraResource{GVK: serviceMonitorGVK, Name: serviceMonitorName, Desired: serviceMonitor},
+		reconciler.ExtraResource{GVK: dashboardGVK, Name: dashboardName, Desired: dashboard},
+	)
 }
 
 // ExtractStatus pulls replicas and the "AllReplicasReady" condition out of a

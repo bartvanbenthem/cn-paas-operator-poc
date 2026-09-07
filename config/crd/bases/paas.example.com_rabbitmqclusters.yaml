@@ -95,6 +95,29 @@ spec:
                 required:
                 - host
                 type: object
+              monitoring:
+                description: |-
+                  monitoring configures Prometheus metrics collection for the underlying
+                  RabbitmqCluster. Unlike PostgresCluster/MariaDBCluster, the RabbitMQ
+                  Cluster Operator has no native PodMonitor/ServiceMonitor toggle of its
+                  own -- rabbitmq_prometheus is one of its always-on essential plugins,
+                  exposed on its own generated Service's port 15692, so this operator
+                  creates the ServiceMonitor directly rather than asking the RabbitMQ
+                  Cluster Operator to.
+                properties:
+                  enablePodMonitor:
+                    default: true
+                    description: |-
+                      enablePodMonitor creates namespace-scoped Prometheus scrape config
+                      (a PodMonitor or ServiceMonitor, depending on what the underlying
+                      vendor operator supports) for this resource, in the same namespace as
+                      the resource itself. Enabled by default. Requires the Prometheus
+                      Operator's PodMonitor/ServiceMonitor CRDs to be installed. Also
+                      requests a matching GrafanaDashboard, on resource kinds that have one
+                      -- requires the grafana-operator's GrafanaDashboard CRD to be
+                      installed and a GrafanaInstance in the same namespace to pick it up.
+                    type: boolean
+                type: object
               replicas:
                 default: 1
                 description: |-

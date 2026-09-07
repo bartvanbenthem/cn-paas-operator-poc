@@ -142,7 +142,7 @@ var _ = Describe("PrometheusInstance Controller", func() {
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 		})
 
-		It("should create and prune a Service and Ingress as .spec.ingress is set and unset", func() {
+		It("should always create the Service, and create/prune the Ingress as .spec.ingress is set and unset", func() {
 			controllerReconciler := &PrometheusInstanceReconciler{
 				Client:   k8sClient,
 				Scheme:   k8sClient.Scheme(),
@@ -159,7 +159,10 @@ var _ = Describe("PrometheusInstance Controller", func() {
 
 			serviceName := types.NamespacedName{Name: resourceName + "-web", Namespace: resourceNamespace}
 			ingressName := types.NamespacedName{Name: resourceName + "-ingress", Namespace: resourceNamespace}
-			Expect(errors.IsNotFound(k8sClient.Get(ctx, serviceName, &corev1.Service{}))).To(BeTrue())
+			// The Service is created regardless of Ingress -- in-cluster
+			// consumers (a GrafanaDatasource, in particular) need a stable
+			// address even when Prometheus is never exposed externally.
+			Expect(k8sClient.Get(ctx, serviceName, &corev1.Service{})).To(Succeed())
 			Expect(errors.IsNotFound(k8sClient.Get(ctx, ingressName, &networkingv1.Ingress{}))).To(BeTrue())
 
 			By("setting .spec.ingress and reconciling")
@@ -189,7 +192,7 @@ var _ = Describe("PrometheusInstance Controller", func() {
 			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(errors.IsNotFound(k8sClient.Get(ctx, serviceName, &corev1.Service{}))).To(BeTrue())
+			Expect(k8sClient.Get(ctx, serviceName, &corev1.Service{})).To(Succeed())
 			Expect(errors.IsNotFound(k8sClient.Get(ctx, ingressName, &networkingv1.Ingress{}))).To(BeTrue())
 		})
 	})

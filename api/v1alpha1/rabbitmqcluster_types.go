@@ -66,6 +66,16 @@ type RabbitMQClusterSpec struct {
 	// object pointing at the RabbitmqCluster's own generated Service.
 	// +optional
 	Ingress *IngressSpec `json:"ingress,omitempty"`
+
+	// monitoring configures Prometheus metrics collection for the underlying
+	// RabbitmqCluster. Unlike PostgresCluster/MariaDBCluster, the RabbitMQ
+	// Cluster Operator has no native PodMonitor/ServiceMonitor toggle of its
+	// own -- rabbitmq_prometheus is one of its always-on essential plugins,
+	// exposed on its own generated Service's port 15692, so this operator
+	// creates the ServiceMonitor directly rather than asking the RabbitMQ
+	// Cluster Operator to.
+	// +optional
+	Monitoring MonitoringSpec `json:"monitoring,omitzero"`
 }
 
 // RabbitMQClusterStatus defines the observed state of RabbitMQCluster.

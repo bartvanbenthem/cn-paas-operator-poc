@@ -78,3 +78,58 @@ func TestBuildManifestIngress(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildManifestScopeLabel(t *testing.T) {
+	cr := &paasv1alpha1.GrafanaInstance{Spec: paasv1alpha1.GrafanaInstanceSpec{Replicas: 1}}
+	u := Adapter{}.BuildManifest(cr, "test", "team-a", "test")
+
+	if got := u.GetLabels()[ScopeLabel]; got != "team-a" {
+		t.Fatalf("expected label %q=%q, got %q", ScopeLabel, "team-a", got)
+	}
+}
+
+func TestExtraResourcesDatasource(t *testing.T) {
+	t.Run("defaults PrometheusRef to \"prometheus\"", func(t *testing.T) {
+		cr := &paasv1alpha1.GrafanaInstance{Spec: paasv1alpha1.GrafanaInstanceSpec{Replicas: 1}}
+
+		extras := Adapter{}.ExtraResources(cr, "test", "team-a", "test")
+		if len(extras) != 1 {
+			t.Fatalf("expected 1 extra, got %d", len(extras))
+		}
+
+		ds := extras[0]
+		if ds.Desired == nil {
+			t.Fatalf("expected the GrafanaDatasource to be desired")
+		}
+		if ds.GVK.Kind != "GrafanaDatasource" {
+			t.Fatalf("expected Kind GrafanaDatasource, got %q", ds.GVK.Kind)
+		}
+
+		url, _, _ := unstructured.NestedString(ds.Desired.Object, "spec", "datasource", "url")
+		if want := "http://prometheus-web.team-a.svc:9090"; url != want {
+			t.Fatalf("expected datasource url %q, got %q", want, url)
+		}
+
+		scope, _, _ := unstructured.NestedString(ds.Desired.Object, "spec", "instanceSelector", "matchLabels", ScopeLabel)
+		if scope != "team-a" {
+			t.Fatalf("expected instanceSelector to match scope label team-a, got %q", scope)
+		}
+
+		uid, _, _ := unstructured.NestedString(ds.Desired.Object, "spec", "uid")
+		if uid != DatasourceUID {
+			t.Fatalf("expected uid %q, got %q", DatasourceUID, uid)
+		}
+	})
+
+	t.Run("honors an explicit PrometheusRef", func(t *testing.T) {
+		cr := &paasv1alpha1.GrafanaInstance{
+			Spec: paasv1alpha1.GrafanaInstanceSpec{Replicas: 1, PrometheusRef: "custom-prom"},
+		}
+
+		extras := Adapter{}.ExtraResources(cr, "test", "team-a", "test")
+		url, _, _ := unstructured.NestedString(extras[0].Desired.Object, "spec", "datasource", "url")
+		if want := "http://custom-prom-web.team-a.svc:9090"; url != want {
+			t.Fatalf("expected datasource url %q, got %q", want, url)
+		}
+	})
+}

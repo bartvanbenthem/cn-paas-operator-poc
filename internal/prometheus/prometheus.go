@@ -47,8 +47,16 @@ const (
 	Kind         = "Prometheus"
 	FieldManager = "prometheusinstance-operator"
 
-	// webPort is the Prometheus web UI/API port.
-	webPort = 9090
+	// WebPort is the Prometheus web UI/API port, exposed by the Service this
+	// operator creates (see ServiceName) fronting Prometheus.
+	WebPort = 9090
+
+	// WebServiceSuffix names the ClusterIP Service this operator creates
+	// fronting a Prometheus's web UI/API (the Prometheus Operator creates no
+	// Service of its own). Exported so other packages -- internal/grafana,
+	// wiring a GrafanaDatasource at it -- can address it without duplicating
+	// the naming convention.
+	WebServiceSuffix = "-web"
 
 	// podSelectorLabel is the Prometheus Operator's own documented label
 	// (see pkg/prometheus/server/operator.go's PrometheusNameLabelName in
@@ -83,6 +91,10 @@ func (Adapter) TargetName(crName string) string { return crName }
 
 func (Adapter) ObjectKind() string   { return "Prometheus" }
 func (Adapter) FieldManager() string { return FieldManager }
+
+// ServiceName returns the name of the web Service generated for a
+// PrometheusInstance named crName.
+func ServiceName(crName string) string { return Adapter{}.TargetName(crName) + WebServiceSuffix }
 
 func resourceListJSON(list corev1.ResourceList) map[string]any {
 	if len(list) == 0 {
@@ -179,20 +191,15 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.PrometheusInstance, name, namespac
 	return u
 }
 
-// ExtraResources builds the ClusterIP Service and Ingress fronting the
-// Prometheus web UI, when requested. Both are built together since the
-// Ingress routes to the Service this operator itself creates. Implements
+// ExtraResources builds the ClusterIP Service fronting the Prometheus web
+// UI/API -- always, regardless of Ingress, since other in-cluster consumers
+// (a GrafanaDatasource, in particular) need a stable in-cluster address even
+// when Prometheus is never exposed externally -- plus an Ingress routed to
+// that Service, when requested. Implements
 // reconciler.ExtraResourcesAdapter[paasv1alpha1.PrometheusInstance, *paasv1alpha1.PrometheusInstance].
 func (Adapter) ExtraResources(cr *paasv1alpha1.PrometheusInstance, targetName, namespace, owner string) []reconciler.ExtraResource {
-	serviceName := targetName + "-web"
+	serviceName := ServiceName(targetName)
 	ingressName := targetName + "-ingress"
-
-	if cr.Spec.Ingress == nil {
-		return []reconciler.ExtraResource{
-			{GVK: serviceGVK, Name: serviceName, Desired: nil},
-			{GVK: ingress.GVK, Name: ingressName, Desired: nil},
-		}
-	}
 
 	service := &unstructured.Unstructured{}
 	service.SetGroupVersionKind(serviceGVK)
@@ -206,11 +213,18 @@ func (Adapter) ExtraResources(cr *paasv1alpha1.PrometheusInstance, targetName, n
 		"type":     "ClusterIP",
 		"selector": map[string]any{podSelectorLabel: targetName},
 		"ports": []any{
-			map[string]any{"name": "web", "port": int64(webPort), "targetPort": "web"},
+			map[string]any{"name": "web", "port": int64(WebPort), "targetPort": "web"},
 		},
 	}
 
-	desiredIngress := ingress.Build(cr.Spec.Ingress, ingressName, namespace, owner, FieldManager, serviceName, webPort)
+	if cr.Spec.Ingress == nil {
+		return []reconciler.ExtraResource{
+			{GVK: serviceGVK, Name: serviceName, Desired: service},
+			{GVK: ingress.GVK, Name: ingressName, Desired: nil},
+		}
+	}
+
+	desiredIngress := ingress.Build(cr.Spec.Ingress, ingressName, namespace, owner, FieldManager, serviceName, WebPort)
 
 	return []reconciler.ExtraResource{
 		{GVK: serviceGVK, Name: serviceName, Desired: service},

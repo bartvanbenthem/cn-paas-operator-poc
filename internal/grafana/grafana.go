@@ -10,12 +10,20 @@
 // repo root for the schema this was built against.
 //
 // grafana-operator also ships a large family of child CRDs (GrafanaDashboard,
-// GrafanaDataSource, GrafanaFolder, GrafanaAlertRuleGroup, ...) that
-// configure a running Grafana. Those are not targeted here: they aren't
-// "an instance" the way Grafana itself, CNPG's Cluster, or Valkey's
+// GrafanaDatasource, GrafanaFolder, GrafanaAlertRuleGroup, ...) that
+// configure a running Grafana. Most of those are not targeted here: they
+// aren't "an instance" the way Grafana itself, CNPG's Cluster, or Valkey's
 // ValkeyCluster are -- they're child config objects, the same role CNPG's
 // Pooler/Backup or Valkey's internal-only ValkeyNode play. Out of scope for
 // this operator.
+//
+// The one exception is GrafanaDatasource: this package's ExtraResources
+// creates exactly one, wiring the generated Grafana to its paired
+// PrometheusInstance (see GrafanaInstanceSpec.PrometheusRef), because that
+// pairing is inherent to standing up a usable Grafana and every building
+// block's own GrafanaDashboard (internal/cnpg, ...) depends on it existing.
+// See crd-grafana-datasource-v5.25.0.yaml at the repo root for the schema
+// this was built against.
 //
 // Adapter implements internal/reconciler's Adapter interface, so the actual
 // reconciliation loop (finalizers, SSA, status-mirroring) lives once in
@@ -31,6 +39,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	paasv1alpha1 "github.com/bartvanbenthem/paas-operator/api/v1alpha1"
+	"github.com/bartvanbenthem/paas-operator/internal/prometheus"
 	"github.com/bartvanbenthem/paas-operator/internal/reconciler"
 )
 
@@ -44,11 +53,49 @@ const (
 	// {metadata,spec}-shaped block (deployment, ingress,
 	// persistentVolumeClaim) BuildManifest assembles below.
 	specKey = "spec"
+
+	// ScopeLabel is applied to every Grafana this operator creates, and
+	// matched by the instanceSelector of every GrafanaDatasource/
+	// GrafanaDashboard created in the same namespace -- by this package's
+	// own ExtraResources below, and by every building-block adapter
+	// (internal/cnpg, internal/mariadb, ...) wiring its own dashboard. One
+	// namespace is expected to hold exactly one GrafanaInstance and one
+	// PrometheusInstance (mirroring the namespace-scoped Prometheus in
+	// internal/prometheus), so the namespace name alone is a sufficient
+	// scope key: it lets every building block target "the Grafana in my
+	// namespace" without a client lookup or an explicit cross-reference.
+	ScopeLabel = "dashboards.paas.example.com/scope"
+
+	// defaultPrometheusRef is the PrometheusInstance name assumed when
+	// GrafanaInstanceSpec.PrometheusRef is left unset.
+	defaultPrometheusRef = "prometheus"
+
+	// DatasourceUID is the fixed UID given to the GrafanaDatasource this
+	// operator creates for a GrafanaInstance. Every GrafanaDashboard's
+	// spec.datasources[].datasourceName should reference this same
+	// constant, so dashboard JSON keeps working regardless of the paired
+	// PrometheusInstance's own name.
+	DatasourceUID = "prometheus"
 )
 
 // GVK is the GroupVersionKind of the grafana-operator Grafana this operator
 // manages.
 var GVK = schema.GroupVersionKind{Group: Group, Version: Version, Kind: Kind}
+
+// datasourceGVK is the GroupVersionKind of the grafana-operator
+// GrafanaDatasource this operator creates to wire a GrafanaInstance to its
+// paired PrometheusInstance.
+var datasourceGVK = schema.GroupVersionKind{Group: Group, Version: Version, Kind: "GrafanaDatasource"}
+
+// InstanceSelector builds the instanceSelector every GrafanaDatasource/
+// GrafanaDashboard in namespace must carry to be picked up by the Grafana
+// this package creates there. Exported so building-block adapters can reuse
+// it verbatim when building their own GrafanaDashboard extras.
+func InstanceSelector(namespace string) map[string]any {
+	return map[string]any{
+		"matchLabels": map[string]any{ScopeLabel: namespace},
+	}
+}
 
 // Adapter drives a paas GrafanaInstance onto a same-named grafana-operator
 // Grafana. It implements
@@ -137,10 +184,49 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.GrafanaInstance, name, namespace, 
 	u.SetLabels(map[string]string{
 		"app.kubernetes.io/managed-by": FieldManager,
 		"paas.example.com/owner":       ownerName,
+		ScopeLabel:                     namespace,
 	})
 	u.Object["spec"] = grafanaSpec
 
 	return u
+}
+
+// ExtraResources builds the GrafanaDatasource wiring this Grafana to its
+// paired PrometheusInstance (see GrafanaInstanceSpec.PrometheusRef).
+// Implements reconciler.ExtraResourcesAdapter[paasv1alpha1.GrafanaInstance,
+// *paasv1alpha1.GrafanaInstance].
+func (Adapter) ExtraResources(cr *paasv1alpha1.GrafanaInstance, targetName, namespace, owner string) []reconciler.ExtraResource {
+	prometheusRef := cr.Spec.PrometheusRef
+	if prometheusRef == "" {
+		prometheusRef = defaultPrometheusRef
+	}
+	prometheusURL := fmt.Sprintf("http://%s.%s.svc:%d", prometheus.ServiceName(prometheusRef), namespace, prometheus.WebPort)
+
+	datasourceName := targetName + "-prometheus"
+
+	datasource := &unstructured.Unstructured{}
+	datasource.SetGroupVersionKind(datasourceGVK)
+	datasource.SetName(datasourceName)
+	datasource.SetNamespace(namespace)
+	datasource.SetLabels(map[string]string{
+		"app.kubernetes.io/managed-by": FieldManager,
+		"paas.example.com/owner":       owner,
+	})
+	datasource.Object["spec"] = map[string]any{
+		"instanceSelector": InstanceSelector(namespace),
+		"uid":              DatasourceUID,
+		"datasource": map[string]any{
+			"name":      "Prometheus",
+			"type":      "prometheus",
+			"access":    "proxy",
+			"url":       prometheusURL,
+			"isDefault": true,
+		},
+	}
+
+	return []reconciler.ExtraResource{
+		{GVK: datasourceGVK, Name: datasourceName, Desired: datasource},
+	}
 }
 
 // ExtractStatus pulls stage/stageStatus/replicas out of a Grafana's

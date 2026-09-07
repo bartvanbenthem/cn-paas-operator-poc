@@ -12,10 +12,18 @@
 // Adapter implements internal/reconciler's Adapter interface, so the actual
 // reconciliation loop (finalizers, SSA, status-mirroring) lives once in
 // internal/reconciler and is shared with every other vendor integration.
+//
+// ExtraResources additionally creates a grafana-operator GrafanaDashboard
+// alongside a monitored Cluster (gated on spec.monitoring.enablePodMonitor),
+// so the Grafana in the same namespace picks it up automatically -- see
+// internal/grafana's package doc for the instanceSelector/datasource
+// convention this relies on. See crd-grafana-dashboard-v5.25.0.yaml at the
+// repo root for the GrafanaDashboard schema this was built against.
 package cnpg
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -26,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	paasv1alpha1 "github.com/bartvanbenthem/paas-operator/api/v1alpha1"
+	"github.com/bartvanbenthem/paas-operator/internal/grafana"
 	"github.com/bartvanbenthem/paas-operator/internal/reconciler"
 )
 
@@ -38,6 +47,19 @@ const (
 
 // GVK is the GroupVersionKind of the CNPG Cluster this operator manages.
 var GVK = schema.GroupVersionKind{Group: Group, Version: Version, Kind: Kind}
+
+// dashboardGVK is the GroupVersionKind of the grafana-operator
+// GrafanaDashboard this adapter creates alongside a monitored PostgresCluster.
+var dashboardGVK = schema.GroupVersionKind{Group: grafana.Group, Version: grafana.Version, Kind: "GrafanaDashboard"}
+
+// dashboardJSON is CloudNativePG's official Grafana dashboard
+// (https://github.com/cloudnative-pg/grafana-dashboards, Apache-2.0),
+// vendored verbatim. Its panels reference the Prometheus datasource via the
+// templated input "${DS_PROMETHEUS}", resolved by GrafanaDashboard's own
+// spec.datasources -- see ExtraResources below.
+//
+//go:embed dashboards/cluster.json
+var dashboardJSON string
 
 // Adapter drives a PostgresCluster onto a same-named CNPG Cluster. It
 // implements reconciler.Adapter[paasv1alpha1.PostgresCluster,
@@ -152,6 +174,42 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.PostgresCluster, name, namespace, 
 	u.Object["spec"] = clusterSpec
 
 	return u
+}
+
+// ExtraResources builds the GrafanaDashboard for cr's CNPG Cluster, gated on
+// spec.monitoring.enablePodMonitor -- a dashboard with nothing scraping the
+// Cluster is pointless, so the same toggle that requests the PodMonitor also
+// requests the dashboard. Implements
+// reconciler.ExtraResourcesAdapter[paasv1alpha1.PostgresCluster, *paasv1alpha1.PostgresCluster].
+func (Adapter) ExtraResources(cr *paasv1alpha1.PostgresCluster, targetName, namespace, owner string) []reconciler.ExtraResource {
+	dashboardName := targetName + "-dashboard"
+
+	if !cr.Spec.Monitoring.EnablePodMonitor {
+		return []reconciler.ExtraResource{
+			{GVK: dashboardGVK, Name: dashboardName, Desired: nil},
+		}
+	}
+
+	dashboard := &unstructured.Unstructured{}
+	dashboard.SetGroupVersionKind(dashboardGVK)
+	dashboard.SetName(dashboardName)
+	dashboard.SetNamespace(namespace)
+	dashboard.SetLabels(map[string]string{
+		"app.kubernetes.io/managed-by": FieldManager,
+		"paas.example.com/owner":       owner,
+	})
+	dashboard.Object["spec"] = map[string]any{
+		"instanceSelector": grafana.InstanceSelector(namespace),
+		"folder":           "CloudNativePG",
+		"datasources": []any{
+			map[string]any{"inputName": "DS_PROMETHEUS", "datasourceName": grafana.DatasourceUID},
+		},
+		"json": dashboardJSON,
+	}
+
+	return []reconciler.ExtraResource{
+		{GVK: dashboardGVK, Name: dashboardName, Desired: dashboard},
+	}
 }
 
 // ExtractStatus pulls phase/instances/readyInstances out of a CNPG

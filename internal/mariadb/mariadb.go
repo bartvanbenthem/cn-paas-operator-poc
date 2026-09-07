@@ -13,9 +13,17 @@
 // Adapter implements internal/reconciler's Adapter interface, so the actual
 // reconciliation loop (finalizers, SSA, status-mirroring) lives once in
 // internal/reconciler and is shared with every other vendor integration.
+//
+// ExtraResources additionally creates a grafana-operator GrafanaDashboard
+// alongside a monitored MariaDB (gated on spec.monitoring.enablePodMonitor),
+// so the Grafana in the same namespace picks it up automatically -- see
+// internal/grafana's package doc for the instanceSelector/datasource
+// convention this relies on. See crd-grafana-dashboard-v5.25.0.yaml at the
+// repo root for the GrafanaDashboard schema this was built against.
 package mariadb
 
 import (
+	_ "embed"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -25,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	paasv1alpha1 "github.com/bartvanbenthem/paas-operator/api/v1alpha1"
+	"github.com/bartvanbenthem/paas-operator/internal/grafana"
 	"github.com/bartvanbenthem/paas-operator/internal/reconciler"
 )
 
@@ -38,6 +47,20 @@ const (
 // GVK is the GroupVersionKind of the mariadb-operator MariaDB this operator
 // manages.
 var GVK = schema.GroupVersionKind{Group: Group, Version: Version, Kind: Kind}
+
+// dashboardGVK is the GroupVersionKind of the grafana-operator
+// GrafanaDashboard this adapter creates alongside a monitored MariaDB.
+var dashboardGVK = schema.GroupVersionKind{Group: grafana.Group, Version: grafana.Version, Kind: "GrafanaDashboard"}
+
+// dashboardJSON is the community "Galera/MariaDB - Overview" dashboard
+// (https://grafana.com/grafana/dashboards/13106, revision 3), vendored
+// verbatim -- linked from mariadb-operator's own docs/metrics.md. Its panels
+// reference the Prometheus datasource via the templated input
+// "${DS_PROMETHEUS}", resolved by GrafanaDashboard's own spec.datasources --
+// see ExtraResources below.
+//
+//go:embed dashboards/cluster.json
+var dashboardJSON string
 
 // Adapter drives a paas MariaDBCluster onto a same-named mariadb-operator
 // MariaDB. It implements
@@ -156,6 +179,42 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.MariaDBCluster, name, namespace, o
 	u.Object["spec"] = clusterSpec
 
 	return u
+}
+
+// ExtraResources builds the GrafanaDashboard for cr's MariaDB, gated on
+// spec.monitoring.enablePodMonitor -- a dashboard with nothing scraping the
+// MariaDB is pointless, so the same toggle that requests the ServiceMonitor
+// also requests the dashboard. Implements
+// reconciler.ExtraResourcesAdapter[paasv1alpha1.MariaDBCluster, *paasv1alpha1.MariaDBCluster].
+func (Adapter) ExtraResources(cr *paasv1alpha1.MariaDBCluster, targetName, namespace, owner string) []reconciler.ExtraResource {
+	dashboardName := targetName + "-dashboard"
+
+	if !cr.Spec.Monitoring.EnablePodMonitor {
+		return []reconciler.ExtraResource{
+			{GVK: dashboardGVK, Name: dashboardName, Desired: nil},
+		}
+	}
+
+	dashboard := &unstructured.Unstructured{}
+	dashboard.SetGroupVersionKind(dashboardGVK)
+	dashboard.SetName(dashboardName)
+	dashboard.SetNamespace(namespace)
+	dashboard.SetLabels(map[string]string{
+		"app.kubernetes.io/managed-by": FieldManager,
+		"paas.example.com/owner":       owner,
+	})
+	dashboard.Object["spec"] = map[string]any{
+		"instanceSelector": grafana.InstanceSelector(namespace),
+		"folder":           "MariaDB",
+		"datasources": []any{
+			map[string]any{"inputName": "DS_PROMETHEUS", "datasourceName": grafana.DatasourceUID},
+		},
+		"json": dashboardJSON,
+	}
+
+	return []reconciler.ExtraResource{
+		{GVK: dashboardGVK, Name: dashboardName, Desired: dashboard},
+	}
 }
 
 // ExtractStatus pulls replicas and the "Ready" condition out of a MariaDB's

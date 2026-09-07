@@ -26,6 +26,8 @@ rules:
 - apiGroups:
   - grafana.integreatly.org
   resources:
+  - grafanadashboards
+  - grafanadatasources
   - grafanas
   verbs:
   - create
@@ -50,7 +52,9 @@ rules:
 - apiGroups:
   - monitoring.coreos.com
   resources:
+  - podmonitors
   - prometheuses
+  - servicemonitors
   verbs:
   - create
   - delete

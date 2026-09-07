@@ -17,9 +17,20 @@
 // Adapter implements internal/reconciler's Adapter interface, so the actual
 // reconciliation loop (finalizers, SSA, status-mirroring) lives once in
 // internal/reconciler and is shared with every other vendor integration.
+//
+// ExtraResources additionally creates a Prometheus Operator PodMonitor and a
+// grafana-operator GrafanaDashboard alongside a monitored ValkeyCluster
+// (gated on spec.monitoring.enablePodMonitor), so the namespace-scoped
+// Prometheus and Grafana pick them up automatically -- see
+// internal/prometheus's package doc for the namespace-scoping convention
+// and internal/grafana's for the instanceSelector/datasource one. See
+// crd-prometheus-podmonitor-v0.93.1.yaml and
+// crd-grafana-dashboard-v5.25.0.yaml at the repo root for the schemas this
+// was built against.
 package valkey
 
 import (
+	_ "embed"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -29,6 +40,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	paasv1alpha1 "github.com/bartvanbenthem/paas-operator/api/v1alpha1"
+	"github.com/bartvanbenthem/paas-operator/internal/grafana"
 	"github.com/bartvanbenthem/paas-operator/internal/reconciler"
 )
 
@@ -40,6 +52,14 @@ const (
 
 	// dataPort is Valkey's data-plane (RESP) port.
 	dataPort = 6379
+
+	// exporterPort is the metrics-exporter sidecar's port, exposing
+	// redis_exporter-compatible metrics -- documented in valkey-operator's
+	// own docs/valkeycluster.md ("exposing Prometheus metrics on port
+	// 9121"), not something this operator guesses at. The sidecar itself is
+	// enabled/disabled by BuildManifest below, driven by
+	// spec.monitoring.enablePodMonitor.
+	exporterPort = 9121
 
 	// clusterSelectorLabel is the label valkey-operator itself applies to
 	// every pod (and its own headless Service's selector) belonging to one
@@ -58,9 +78,32 @@ const (
 // LoadBalancer/NodePort, so a separate Service is required.
 var externalServiceGVK = schema.GroupVersionKind{Version: "v1", Kind: "Service"}
 
+// podMonitorGVK is the GroupVersionKind of the Prometheus Operator
+// PodMonitor this adapter creates alongside a monitored ValkeyCluster.
+// valkey-operator creates no PodMonitor of its own (unlike CNPG/
+// mariadb-operator), so this operator builds one directly, targeting the
+// metrics-exporter sidecar via pod labels rather than a Service.
+var podMonitorGVK = schema.GroupVersionKind{Group: "monitoring.coreos.com", Version: "v1", Kind: "PodMonitor"}
+
+// dashboardGVK is the GroupVersionKind of the grafana-operator
+// GrafanaDashboard this adapter creates alongside a monitored ValkeyCluster.
+var dashboardGVK = schema.GroupVersionKind{Group: grafana.Group, Version: grafana.Version, Kind: "GrafanaDashboard"}
+
 // GVK is the GroupVersionKind of the valkey-operator ValkeyCluster this
 // operator manages.
 var GVK = schema.GroupVersionKind{Group: Group, Version: Version, Kind: Kind}
+
+// dashboardJSON is the community "Redis Dashboard for Prometheus Redis
+// Exporter 1.x" dashboard (https://grafana.com/grafana/dashboards/763,
+// revision 6), vendored verbatim -- compatible with Valkey's
+// metrics-exporter sidecar since it emits the same redis_exporter metric
+// format. Its panels reference the Prometheus datasource via the templated
+// input "${DS_PROM}" (this dashboard's own input name, unlike the
+// "${DS_PROMETHEUS}" used elsewhere), resolved by GrafanaDashboard's own
+// spec.datasources -- see ExtraResources below.
+//
+//go:embed dashboards/cluster.json
+var dashboardJSON string
 
 // Adapter drives a paas ValkeyCluster onto a same-named valkey-operator
 // ValkeyCluster. It implements
@@ -75,6 +118,15 @@ func (Adapter) TargetName(crName string) string { return crName }
 
 func (Adapter) ObjectKind() string   { return "Valkey ValkeyCluster" }
 func (Adapter) FieldManager() string { return FieldManager }
+
+// commonLabels returns the app.kubernetes.io/managed-by + paas.example.com/owner
+// pair every object this adapter creates carries.
+func commonLabels(owner string) map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/managed-by": FieldManager,
+		"paas.example.com/owner":       owner,
+	}
+}
 
 func resourceListJSON(list corev1.ResourceList) map[string]any {
 	if len(list) == 0 {
@@ -124,54 +176,97 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.ValkeyCluster, name, namespace, ow
 		clusterSpec["resources"] = resources
 	}
 
+	// valkey-operator's exporter defaults to enabled regardless of what this
+	// operator's own caller wants -- set it explicitly either way so
+	// spec.monitoring.enablePodMonitor is the single source of truth (and
+	// the sidecar's resource cost isn't paid when monitoring is off).
+	clusterSpec["exporter"] = map[string]any{"enabled": spec.Monitoring.EnablePodMonitor}
+
 	u := &unstructured.Unstructured{}
 	u.SetGroupVersionKind(GVK)
 	u.SetName(name)
 	u.SetNamespace(namespace)
-	u.SetLabels(map[string]string{
-		"app.kubernetes.io/managed-by": FieldManager,
-		"paas.example.com/owner":       ownerName,
-	})
+	u.SetLabels(commonLabels(ownerName))
 	u.Object["spec"] = clusterSpec
 
 	return u
 }
 
 // ExtraResources builds the LoadBalancer/NodePort Service exposing the
-// cluster's data-plane port outside the cluster, when requested. Implements
-// reconciler.ExtraResourcesAdapter[paasv1alpha1.ValkeyCluster, *paasv1alpha1.ValkeyCluster].
+// cluster's data-plane port outside the cluster (when requested), plus the
+// PodMonitor and GrafanaDashboard driven by spec.monitoring.enablePodMonitor
+// (see BuildManifest for the paired metrics-exporter sidecar toggle).
+// Implements reconciler.ExtraResourcesAdapter[paasv1alpha1.ValkeyCluster,
+// *paasv1alpha1.ValkeyCluster].
 func (Adapter) ExtraResources(cr *paasv1alpha1.ValkeyCluster, targetName, namespace, owner string) []reconciler.ExtraResource {
 	name := targetName + "-external"
+	podMonitorName := targetName + "-podmonitor"
+	dashboardName := targetName + "-dashboard"
+
+	extras := make([]reconciler.ExtraResource, 0, 3)
 
 	expose := cr.Spec.Expose
 	if expose == nil {
-		return []reconciler.ExtraResource{
-			{GVK: externalServiceGVK, Name: name, Desired: nil},
+		extras = append(extras, reconciler.ExtraResource{GVK: externalServiceGVK, Name: name, Desired: nil})
+	} else {
+		u := &unstructured.Unstructured{}
+		u.SetGroupVersionKind(externalServiceGVK)
+		u.SetName(name)
+		u.SetNamespace(namespace)
+		u.SetLabels(commonLabels(owner))
+		if len(expose.Annotations) > 0 {
+			u.SetAnnotations(expose.Annotations)
 		}
+		u.Object["spec"] = map[string]any{
+			"type":     string(expose.Type),
+			"selector": map[string]any{clusterSelectorLabel: targetName},
+			"ports": []any{
+				map[string]any{"name": "valkey", "port": int64(dataPort), "targetPort": int64(dataPort)},
+			},
+		}
+		extras = append(extras, reconciler.ExtraResource{GVK: externalServiceGVK, Name: name, Desired: u})
 	}
 
-	u := &unstructured.Unstructured{}
-	u.SetGroupVersionKind(externalServiceGVK)
-	u.SetName(name)
-	u.SetNamespace(namespace)
-	u.SetLabels(map[string]string{
-		"app.kubernetes.io/managed-by": FieldManager,
-		"paas.example.com/owner":       owner,
-	})
-	if len(expose.Annotations) > 0 {
-		u.SetAnnotations(expose.Annotations)
+	if !cr.Spec.Monitoring.EnablePodMonitor {
+		extras = append(extras,
+			reconciler.ExtraResource{GVK: podMonitorGVK, Name: podMonitorName, Desired: nil},
+			reconciler.ExtraResource{GVK: dashboardGVK, Name: dashboardName, Desired: nil},
+		)
+		return extras
 	}
-	u.Object["spec"] = map[string]any{
-		"type":     string(expose.Type),
-		"selector": map[string]any{clusterSelectorLabel: targetName},
-		"ports": []any{
-			map[string]any{"name": "valkey", "port": int64(dataPort), "targetPort": int64(dataPort)},
+
+	podMonitor := &unstructured.Unstructured{}
+	podMonitor.SetGroupVersionKind(podMonitorGVK)
+	podMonitor.SetName(podMonitorName)
+	podMonitor.SetNamespace(namespace)
+	podMonitor.SetLabels(commonLabels(owner))
+	podMonitor.Object["spec"] = map[string]any{
+		"selector": map[string]any{
+			"matchLabels": map[string]any{clusterSelectorLabel: targetName},
+		},
+		"podMetricsEndpoints": []any{
+			map[string]any{"targetPort": int64(exporterPort)},
 		},
 	}
 
-	return []reconciler.ExtraResource{
-		{GVK: externalServiceGVK, Name: name, Desired: u},
+	dashboard := &unstructured.Unstructured{}
+	dashboard.SetGroupVersionKind(dashboardGVK)
+	dashboard.SetName(dashboardName)
+	dashboard.SetNamespace(namespace)
+	dashboard.SetLabels(commonLabels(owner))
+	dashboard.Object["spec"] = map[string]any{
+		"instanceSelector": grafana.InstanceSelector(namespace),
+		"folder":           "Valkey",
+		"datasources": []any{
+			map[string]any{"inputName": "DS_PROM", "datasourceName": grafana.DatasourceUID},
+		},
+		"json": dashboardJSON,
 	}
+
+	return append(extras,
+		reconciler.ExtraResource{GVK: podMonitorGVK, Name: podMonitorName, Desired: podMonitor},
+		reconciler.ExtraResource{GVK: dashboardGVK, Name: dashboardName, Desired: dashboard},
+	)
 }
 
 // ExtractStatus pulls state/shards/readyShards out of a ValkeyCluster's

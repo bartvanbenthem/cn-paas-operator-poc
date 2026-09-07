@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	paasv1alpha1 "github.com/bartvanbenthem/paas-operator/api/v1alpha1"
+	"github.com/bartvanbenthem/paas-operator/internal/grafana"
 )
 
 // baseSpec returns a minimal, valid PostgresClusterSpec shared across this
@@ -106,6 +107,54 @@ func TestBuildManifestExpose(t *testing.T) {
 		svcType, _, _ := unstructured.NestedString(entry, "serviceTemplate", "spec", "type")
 		if svcType != "LoadBalancer" {
 			t.Fatalf("expected serviceTemplate.spec.type LoadBalancer, got %q", svcType)
+		}
+	})
+}
+
+func TestExtraResourcesDashboard(t *testing.T) {
+	t.Run("absent when monitoring is disabled", func(t *testing.T) {
+		cr := &paasv1alpha1.PostgresCluster{Spec: baseSpec()}
+
+		extras := Adapter{}.ExtraResources(cr, "test", "team-a", "test")
+		if len(extras) != 1 {
+			t.Fatalf("expected 1 extra, got %d", len(extras))
+		}
+		if extras[0].Desired != nil {
+			t.Fatalf("expected the GrafanaDashboard to be absent when monitoring is disabled")
+		}
+	})
+
+	t.Run("built when monitoring is enabled", func(t *testing.T) {
+		spec := baseSpec()
+		spec.Monitoring.EnablePodMonitor = true
+		cr := &paasv1alpha1.PostgresCluster{Spec: spec}
+
+		extras := Adapter{}.ExtraResources(cr, "test", "team-a", "test")
+		dash := extras[0]
+		if dash.Desired == nil {
+			t.Fatalf("expected the GrafanaDashboard to be desired")
+		}
+		if dash.GVK.Kind != "GrafanaDashboard" {
+			t.Fatalf("expected Kind GrafanaDashboard, got %q", dash.GVK.Kind)
+		}
+
+		scope, _, _ := unstructured.NestedString(dash.Desired.Object, "spec", "instanceSelector", "matchLabels", grafana.ScopeLabel)
+		if scope != "team-a" {
+			t.Fatalf("expected instanceSelector to match scope label team-a, got %q", scope)
+		}
+
+		json, found, _ := unstructured.NestedString(dash.Desired.Object, "spec", "json")
+		if !found || json == "" {
+			t.Fatalf("expected spec.json to be populated with the embedded dashboard")
+		}
+
+		datasources, _, _ := unstructured.NestedSlice(dash.Desired.Object, "spec", "datasources")
+		if len(datasources) != 1 {
+			t.Fatalf("expected exactly one datasource mapping, got %d", len(datasources))
+		}
+		entry, _ := datasources[0].(map[string]any)
+		if name, _, _ := unstructured.NestedString(entry, "datasourceName"); name != grafana.DatasourceUID {
+			t.Fatalf("expected datasourceName %q, got %q", grafana.DatasourceUID, name)
 		}
 	})
 }

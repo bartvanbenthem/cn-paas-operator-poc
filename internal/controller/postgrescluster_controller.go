@@ -41,6 +41,7 @@ const PostgresClusterControllerName = "postgrescluster"
 // +kubebuilder:rbac:groups=paas.example.com,resources=postgresclusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=paas.example.com,resources=postgresclusters/finalizers,verbs=update
 // +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=clusters,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=grafana.integreatly.org,resources=grafanadashboards,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 // NewPostgresClusterReconciler builds the PostgresCluster controller.

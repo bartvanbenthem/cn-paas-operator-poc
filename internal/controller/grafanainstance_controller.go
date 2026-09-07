@@ -41,6 +41,7 @@ const GrafanaInstanceControllerName = "grafanainstance"
 // +kubebuilder:rbac:groups=paas.example.com,resources=grafanainstances/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=paas.example.com,resources=grafanainstances/finalizers,verbs=update
 // +kubebuilder:rbac:groups=grafana.integreatly.org,resources=grafanas,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=grafana.integreatly.org,resources=grafanadatasources,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 // NewGrafanaInstanceReconciler builds the GrafanaInstance controller.

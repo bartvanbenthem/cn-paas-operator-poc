@@ -42,6 +42,8 @@ const ValkeyClusterControllerName = "valkeycluster"
 // +kubebuilder:rbac:groups=paas.example.com,resources=valkeyclusters/finalizers,verbs=update
 // +kubebuilder:rbac:groups=valkey.io,resources=valkeyclusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=grafana.integreatly.org,resources=grafanadashboards,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 // NewValkeyClusterReconciler builds the ValkeyCluster controller.

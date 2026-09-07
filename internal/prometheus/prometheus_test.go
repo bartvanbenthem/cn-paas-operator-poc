@@ -76,7 +76,7 @@ func TestBuildManifestStorage(t *testing.T) {
 }
 
 func TestExtraResourcesIngress(t *testing.T) {
-	t.Run("unset returns absent entries for both Service and Ingress", func(t *testing.T) {
+	t.Run("unset still builds the Service (needed in-cluster regardless of Ingress) but leaves the Ingress absent", func(t *testing.T) {
 		cr := &paasv1alpha1.PrometheusInstance{Spec: paasv1alpha1.PrometheusInstanceSpec{Replicas: 1}}
 
 		extras := Adapter{}.ExtraResources(cr, "test", "default", "test")
@@ -84,13 +84,14 @@ func TestExtraResourcesIngress(t *testing.T) {
 		if len(extras) != 2 {
 			t.Fatalf("expected 2 extras, got %d", len(extras))
 		}
-		for _, extra := range extras {
-			if extra.Desired != nil {
-				t.Fatalf("expected Desired to be nil for %q when Ingress is unset", extra.Name)
-			}
-		}
 		if extras[0].Name != "test-web" || extras[1].Name != "test-ingress" {
 			t.Fatalf("unexpected extra names: %q, %q", extras[0].Name, extras[1].Name)
+		}
+		if extras[0].Desired == nil {
+			t.Fatalf("expected the Service to be desired even when Ingress is unset")
+		}
+		if extras[1].Desired != nil {
+			t.Fatalf("expected the Ingress to be absent when Ingress is unset")
 		}
 	})
 

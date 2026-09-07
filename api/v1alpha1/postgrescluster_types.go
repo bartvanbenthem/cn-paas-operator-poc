@@ -69,15 +69,25 @@ type PostgresClusterSpec struct {
 }
 
 // MonitoringSpec configures Prometheus metrics collection for a managed
-// resource. It is shared across every resource kind whose underlying vendor
-// operator natively supports it (currently PostgresCluster and
-// MariaDBCluster) so the toggle behaves the same way everywhere it appears.
+// resource. It is shared across every resource kind this operator manages
+// (PostgresCluster, MariaDBCluster, ValkeyCluster, RabbitMQCluster) so the
+// toggle behaves the same way everywhere it appears -- for PostgresCluster
+// and MariaDBCluster the underlying vendor operator creates the PodMonitor/
+// ServiceMonitor itself; for ValkeyCluster and RabbitMQCluster, whose vendor
+// operators have no such native toggle, this operator builds one directly
+// (see internal/valkey and internal/rabbitmq). Enabling it also requests a
+// matching GrafanaDashboard, on every resource kind that has one -- see
+// internal/grafana's package doc for the instanceSelector/datasource
+// convention it relies on.
 type MonitoringSpec struct {
 	// enablePodMonitor creates namespace-scoped Prometheus scrape config
 	// (a PodMonitor or ServiceMonitor, depending on what the underlying
 	// vendor operator supports) for this resource, in the same namespace as
 	// the resource itself. Enabled by default. Requires the Prometheus
-	// Operator's PodMonitor/ServiceMonitor CRDs to be installed.
+	// Operator's PodMonitor/ServiceMonitor CRDs to be installed. Also
+	// requests a matching GrafanaDashboard, on resource kinds that have one
+	// -- requires the grafana-operator's GrafanaDashboard CRD to be
+	// installed and a GrafanaInstance in the same namespace to pick it up.
 	// +kubebuilder:default=true
 	// +optional
 	EnablePodMonitor bool `json:"enablePodMonitor,omitempty"`

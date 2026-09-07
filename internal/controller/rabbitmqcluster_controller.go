@@ -43,6 +43,8 @@ const RabbitMQClusterControllerName = "rabbitmqcluster"
 // +kubebuilder:rbac:groups=paas.example.com,resources=rabbitmqclusters/finalizers,verbs=update
 // +kubebuilder:rbac:groups=rabbitmq.com,resources=rabbitmqclusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=grafana.integreatly.org,resources=grafanadashboards,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 // NewRabbitMQClusterReconciler builds the RabbitMQCluster controller.

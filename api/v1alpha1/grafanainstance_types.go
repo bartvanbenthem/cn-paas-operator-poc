@@ -55,6 +55,15 @@ type GrafanaInstanceSpec struct {
 	// Ingress object is created by this operator.
 	// +optional
 	Ingress *IngressSpec `json:"ingress,omitempty"`
+
+	// prometheusRef names the PrometheusInstance (in this same namespace)
+	// this Grafana should be wired to via an auto-created GrafanaDatasource.
+	// Defaults to "prometheus" when unset -- the conventional name for the
+	// single PrometheusInstance expected per namespace. The referenced
+	// PrometheusInstance need not exist yet: the datasource is created
+	// regardless of whether it currently resolves to anything.
+	// +optional
+	PrometheusRef string `json:"prometheusRef,omitempty"`
 }
 
 // GrafanaInstanceStatus defines the observed state of GrafanaInstance.

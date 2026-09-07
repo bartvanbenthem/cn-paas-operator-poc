@@ -66,6 +66,15 @@ type ValkeyClusterSpec struct {
 	// manages a separate LoadBalancer/NodePort Service.
 	// +optional
 	Expose *ServiceExposeSpec `json:"expose,omitempty"`
+
+	// monitoring configures Prometheus metrics collection for the underlying
+	// ValkeyCluster. Unlike PostgresCluster/MariaDBCluster, the
+	// valkey-operator has no native PodMonitor toggle of its own -- setting
+	// this also drives its per-pod metrics-exporter sidecar (spec.exporter),
+	// and this operator creates the PodMonitor directly rather than asking
+	// the valkey-operator to.
+	// +optional
+	Monitoring MonitoringSpec `json:"monitoring,omitzero"`
 }
 
 // PersistenceSpec describes the data volume for each Valkey node.

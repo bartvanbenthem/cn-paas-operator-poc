@@ -104,6 +104,15 @@ spec:
                 required:
                 - size
                 type: object
+              prometheusRef:
+                description: |-
+                  prometheusRef names the PrometheusInstance (in this same namespace)
+                  this Grafana should be wired to via an auto-created GrafanaDatasource.
+                  Defaults to "prometheus" when unset -- the conventional name for the
+                  single PrometheusInstance expected per namespace. The referenced
+                  PrometheusInstance need not exist yet: the datasource is created
+                  regardless of whether it currently resolves to anything.
+                type: string
               replicas:
                 default: 1
                 description: replicas is the number of Grafana pods to run.

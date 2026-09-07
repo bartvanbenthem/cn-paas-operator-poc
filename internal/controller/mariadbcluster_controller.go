@@ -41,6 +41,7 @@ const MariaDBClusterControllerName = "mariadbcluster"
 // +kubebuilder:rbac:groups=paas.example.com,resources=mariadbclusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=paas.example.com,resources=mariadbclusters/finalizers,verbs=update
 // +kubebuilder:rbac:groups=k8s.mariadb.com,resources=mariadbs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=grafana.integreatly.org,resources=grafanadashboards,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 // NewMariaDBClusterReconciler builds the MariaDBCluster controller.
