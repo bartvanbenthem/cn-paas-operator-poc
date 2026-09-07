@@ -95,6 +95,7 @@ spec:
                   when unset.
                 type: string
               monitoring:
+                default: {}
                 description: |-
                   monitoring configures Prometheus metrics collection for the underlying
                   MariaDB.

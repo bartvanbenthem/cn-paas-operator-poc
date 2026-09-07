@@ -89,8 +89,10 @@ func TestBuildManifestScopeLabel(t *testing.T) {
 }
 
 func TestExtraResourcesDatasource(t *testing.T) {
-	t.Run("defaults PrometheusRef to \"prometheus\"", func(t *testing.T) {
-		cr := &paasv1alpha1.GrafanaInstance{Spec: paasv1alpha1.GrafanaInstanceSpec{Replicas: 1}}
+	t.Run("wires the datasource to the explicit PrometheusRef", func(t *testing.T) {
+		cr := &paasv1alpha1.GrafanaInstance{
+			Spec: paasv1alpha1.GrafanaInstanceSpec{Replicas: 1, PrometheusRef: "custom-prom"},
+		}
 
 		extras := Adapter{}.ExtraResources(cr, "test", "team-a", "test")
 		if len(extras) != 1 {
@@ -106,7 +108,7 @@ func TestExtraResourcesDatasource(t *testing.T) {
 		}
 
 		url, _, _ := unstructured.NestedString(ds.Desired.Object, "spec", "datasource", "url")
-		if want := "http://prometheus-web.team-a.svc:9090"; url != want {
+		if want := "http://custom-prom-web.team-a.svc:9090"; url != want {
 			t.Fatalf("expected datasource url %q, got %q", want, url)
 		}
 
@@ -118,18 +120,6 @@ func TestExtraResourcesDatasource(t *testing.T) {
 		uid, _, _ := unstructured.NestedString(ds.Desired.Object, "spec", "uid")
 		if uid != DatasourceUID {
 			t.Fatalf("expected uid %q, got %q", DatasourceUID, uid)
-		}
-	})
-
-	t.Run("honors an explicit PrometheusRef", func(t *testing.T) {
-		cr := &paasv1alpha1.GrafanaInstance{
-			Spec: paasv1alpha1.GrafanaInstanceSpec{Replicas: 1, PrometheusRef: "custom-prom"},
-		}
-
-		extras := Adapter{}.ExtraResources(cr, "test", "team-a", "test")
-		url, _, _ := unstructured.NestedString(extras[0].Desired.Object, "spec", "datasource", "url")
-		if want := "http://custom-prom-web.team-a.svc:9090"; url != want {
-			t.Fatalf("expected datasource url %q, got %q", want, url)
 		}
 	})
 }

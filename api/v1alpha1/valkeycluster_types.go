@@ -73,6 +73,7 @@ type ValkeyClusterSpec struct {
 	// this also drives its per-pod metrics-exporter sidecar (spec.exporter),
 	// and this operator creates the PodMonitor directly rather than asking
 	// the valkey-operator to.
+	// +kubebuilder:default={}
 	// +optional
 	Monitoring MonitoringSpec `json:"monitoring,omitzero"`
 }

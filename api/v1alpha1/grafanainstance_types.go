@@ -58,12 +58,18 @@ type GrafanaInstanceSpec struct {
 
 	// prometheusRef names the PrometheusInstance (in this same namespace)
 	// this Grafana should be wired to via an auto-created GrafanaDatasource.
-	// Defaults to "prometheus" when unset -- the conventional name for the
-	// single PrometheusInstance expected per namespace. The referenced
-	// PrometheusInstance need not exist yet: the datasource is created
-	// regardless of whether it currently resolves to anything.
-	// +optional
-	PrometheusRef string `json:"prometheusRef,omitempty"`
+	// Required, and deliberately has no convention-based default (e.g.
+	// assuming a PrometheusInstance is always named "prometheus"): a wrong
+	// guess produces a GrafanaDatasource pointing at a Service that doesn't
+	// exist, which fails silently -- grafana-operator reports the
+	// GrafanaDatasource itself as successfully applied, since "applied"
+	// only means the config was pushed to Grafana, not that Grafana can
+	// actually reach it. The referenced PrometheusInstance need not exist
+	// yet: the datasource is created regardless of whether it currently
+	// resolves to anything.
+	// +kubebuilder:validation:MinLength=1
+	// +required
+	PrometheusRef string `json:"prometheusRef"`
 }
 
 // GrafanaInstanceStatus defines the observed state of GrafanaInstance.

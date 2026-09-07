@@ -58,6 +58,7 @@ type PostgresClusterSpec struct {
 
 	// monitoring configures Prometheus metrics collection for the underlying
 	// CNPG Cluster.
+	// +kubebuilder:default={}
 	// +optional
 	Monitoring MonitoringSpec `json:"monitoring,omitzero"`
 
@@ -92,6 +93,19 @@ type MonitoringSpec struct {
 	// +optional
 	EnablePodMonitor bool `json:"enablePodMonitor,omitempty"`
 }
+
+// Every embedding field of MonitoringSpec (PostgresClusterSpec.Monitoring,
+// MariaDBClusterSpec.Monitoring, ...) must carry its own
+// "+kubebuilder:default={}" marker, not just this type's own field-level
+// default above. Kubernetes CRD defaulting only applies a nested field's
+// default once its parent object is present in the request; if the whole
+// "monitoring" block is omitted from a CR (rather than submitted as
+// "monitoring: {}"), the API server does not synthesize it purely because
+// enablePodMonitor has a default -- EnablePodMonitor silently stays Go's
+// bool zero value (false) instead. This bit a real cluster: a
+// ValkeyCluster/RabbitMQCluster created without an explicit "monitoring:"
+// key got no PodMonitor/ServiceMonitor/GrafanaDashboard at all, contrary to
+// this field's own "Enabled by default" doc comment.
 
 // StorageSpec describes the PGDATA volume for each instance.
 type StorageSpec struct {

@@ -83,6 +83,7 @@ spec:
                   Defaults to the valkey-operator's own default image when unset.
                 type: string
               monitoring:
+                default: {}
                 description: |-
                   monitoring configures Prometheus metrics collection for the underlying
                   ValkeyCluster. Unlike PostgresCluster/MariaDBCluster, the

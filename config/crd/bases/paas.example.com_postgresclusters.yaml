@@ -102,6 +102,7 @@ spec:
                 minimum: 1
                 type: integer
               monitoring:
+                default: {}
                 description: |-
                   monitoring configures Prometheus metrics collection for the underlying
                   CNPG Cluster.

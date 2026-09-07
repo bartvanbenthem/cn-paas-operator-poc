@@ -74,6 +74,7 @@ type RabbitMQClusterSpec struct {
 	// exposed on its own generated Service's port 15692, so this operator
 	// creates the ServiceMonitor directly rather than asking the RabbitMQ
 	// Cluster Operator to.
+	// +kubebuilder:default={}
 	// +optional
 	Monitoring MonitoringSpec `json:"monitoring,omitzero"`
 }

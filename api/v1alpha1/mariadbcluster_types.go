@@ -62,6 +62,7 @@ type MariaDBClusterSpec struct {
 
 	// monitoring configures Prometheus metrics collection for the underlying
 	// MariaDB.
+	// +kubebuilder:default={}
 	// +optional
 	Monitoring MonitoringSpec `json:"monitoring,omitzero"`
 

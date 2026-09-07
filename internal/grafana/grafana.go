@@ -66,10 +66,6 @@ const (
 	// namespace" without a client lookup or an explicit cross-reference.
 	ScopeLabel = "dashboards.paas.example.com/scope"
 
-	// defaultPrometheusRef is the PrometheusInstance name assumed when
-	// GrafanaInstanceSpec.PrometheusRef is left unset.
-	defaultPrometheusRef = "prometheus"
-
 	// DatasourceUID is the fixed UID given to the GrafanaDatasource this
 	// operator creates for a GrafanaInstance. Every GrafanaDashboard's
 	// spec.datasources[].datasourceName should reference this same
@@ -196,11 +192,7 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.GrafanaInstance, name, namespace, 
 // Implements reconciler.ExtraResourcesAdapter[paasv1alpha1.GrafanaInstance,
 // *paasv1alpha1.GrafanaInstance].
 func (Adapter) ExtraResources(cr *paasv1alpha1.GrafanaInstance, targetName, namespace, owner string) []reconciler.ExtraResource {
-	prometheusRef := cr.Spec.PrometheusRef
-	if prometheusRef == "" {
-		prometheusRef = defaultPrometheusRef
-	}
-	prometheusURL := fmt.Sprintf("http://%s.%s.svc:%d", prometheus.ServiceName(prometheusRef), namespace, prometheus.WebPort)
+	prometheusURL := fmt.Sprintf("http://%s.%s.svc:%d", prometheus.ServiceName(cr.Spec.PrometheusRef), namespace, prometheus.WebPort)
 
 	datasourceName := targetName + "-prometheus"
 

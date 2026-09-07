@@ -59,7 +59,8 @@ var _ = Describe("GrafanaInstance Controller", func() {
 						Namespace: resourceNamespace,
 					},
 					Spec: paasv1alpha1.GrafanaInstanceSpec{
-						Replicas: 2,
+						Replicas:      2,
+						PrometheusRef: "prometheus",
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -132,6 +133,27 @@ var _ = Describe("GrafanaInstance Controller", func() {
 			cond := meta.FindStatusCondition(withStatus.Status.Conditions, "Ready")
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+		})
+
+		It("should reject a GrafanaInstance with prometheusRef unset or empty", func() {
+			// Regression test: prometheusRef used to silently default to the
+			// literal name "prometheus", producing a GrafanaDatasource
+			// pointing at a Service that doesn't exist whenever the actual
+			// PrometheusInstance was named anything else -- a real cluster
+			// hit this. The field is now required with minLength=1 so the
+			// API server rejects the ambiguous case outright instead of
+			// silently wiring nothing up.
+			unset := &paasv1alpha1.GrafanaInstance{
+				ObjectMeta: metav1.ObjectMeta{Name: "no-prometheus-ref", Namespace: resourceNamespace},
+				Spec:       paasv1alpha1.GrafanaInstanceSpec{Replicas: 1},
+			}
+			Expect(k8sClient.Create(ctx, unset)).NotTo(Succeed())
+
+			empty := &paasv1alpha1.GrafanaInstance{
+				ObjectMeta: metav1.ObjectMeta{Name: "empty-prometheus-ref", Namespace: resourceNamespace},
+				Spec:       paasv1alpha1.GrafanaInstanceSpec{Replicas: 1, PrometheusRef: ""},
+			}
+			Expect(k8sClient.Create(ctx, empty)).NotTo(Succeed())
 		})
 	})
 })

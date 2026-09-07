@@ -96,6 +96,7 @@ spec:
                 - host
                 type: object
               monitoring:
+                default: {}
                 description: |-
                   monitoring configures Prometheus metrics collection for the underlying
                   RabbitmqCluster. Unlike PostgresCluster/MariaDBCluster, the RabbitMQ
