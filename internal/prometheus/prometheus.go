@@ -22,6 +22,17 @@
 // namespace is picked up -- matching the namespace-scoped PodMonitor/
 // ServiceMonitor CNPG and mariadb-operator create for MonitoringSpec.
 //
+// ExtraResources also creates a dedicated ServiceAccount plus a namespace-
+// scoped Role/RoleBinding granting get/list/watch on pods, services and
+// endpoints, and BuildManifest points spec.serviceAccountName at it. Without
+// this, the Prometheus workload pod runs as its namespace's "default"
+// ServiceAccount (no RBAC at all) -- the Prometheus Operator can still
+// discover PodMonitor/ServiceMonitor objects fine (that goes through the
+// Operator's own permissions), but the Prometheus pod itself then can't
+// resolve any of them to actual scrape targets, so every scrape config
+// silently ends up with zero active targets despite selectors matching
+// correctly.
+//
 // Adapter implements internal/reconciler's Adapter interface, so the actual
 // reconciliation loop (finalizers, SSA, status-mirroring) lives once in
 // internal/reconciler and is shared with every other vendor integration.
@@ -73,6 +84,20 @@ const (
 // front a Prometheus, since the Prometheus Operator creates none itself.
 var serviceGVK = schema.GroupVersionKind{Version: "v1", Kind: "Service"}
 
+// rbacGroup is the API group of the Role/RoleBinding scrapeRBACExtras
+// creates.
+const rbacGroup = "rbac.authorization.k8s.io"
+
+// serviceAccountGVK, roleGVK and roleBindingGVK are the GroupVersionKinds of
+// the RBAC this operator creates so the Prometheus workload itself (not the
+// Prometheus Operator, which has its own broader permissions) can list/watch
+// the Pods/Services/Endpoints its PodMonitors/ServiceMonitors resolve to.
+var (
+	serviceAccountGVK = schema.GroupVersionKind{Version: "v1", Kind: "ServiceAccount"}
+	roleGVK           = schema.GroupVersionKind{Group: rbacGroup, Version: "v1", Kind: "Role"}
+	roleBindingGVK    = schema.GroupVersionKind{Group: rbacGroup, Version: "v1", Kind: "RoleBinding"}
+)
+
 // GVK is the GroupVersionKind of the Prometheus Operator Prometheus this
 // operator manages.
 var GVK = schema.GroupVersionKind{Group: Group, Version: Version, Kind: Kind}
@@ -91,6 +116,15 @@ func (Adapter) TargetName(crName string) string { return crName }
 
 func (Adapter) ObjectKind() string   { return "Prometheus" }
 func (Adapter) FieldManager() string { return FieldManager }
+
+// commonLabels returns the app.kubernetes.io/managed-by + paas.example.com/owner
+// pair every object this adapter creates carries.
+func commonLabels(owner string) map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/managed-by": FieldManager,
+		"paas.example.com/owner":       owner,
+	}
+}
 
 // ServiceName returns the name of the web Service generated for a
 // PrometheusInstance named crName.
@@ -120,6 +154,16 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.PrometheusInstance, name, namespac
 
 	promSpec := map[string]any{
 		"replicas": int64(spec.Replicas),
+		// serviceAccountName must reference a ServiceAccount that can
+		// actually list/watch Pods, Services and Endpoints -- otherwise
+		// Prometheus falls back to the namespace's own "default"
+		// ServiceAccount, which has no RBAC, and every PodMonitor/
+		// ServiceMonitor it discovers resolves to zero targets even though
+		// the objects themselves are found (that discovery goes through the
+		// Prometheus Operator's own permissions, not the Prometheus pod's).
+		// See ExtraResources for the ServiceAccount/Role/RoleBinding this
+		// name refers to.
+		"serviceAccountName": name,
 		// Empty selectors + unset namespace selectors: select every
 		// ServiceMonitor/PodMonitor, but only within this Prometheus's own
 		// namespace. See the package doc for why the namespace selectors
@@ -182,10 +226,7 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.PrometheusInstance, name, namespac
 	u.SetGroupVersionKind(GVK)
 	u.SetName(name)
 	u.SetNamespace(namespace)
-	u.SetLabels(map[string]string{
-		"app.kubernetes.io/managed-by": FieldManager,
-		"paas.example.com/owner":       ownerName,
-	})
+	u.SetLabels(commonLabels(ownerName))
 	u.Object["spec"] = promSpec
 
 	return u
@@ -205,30 +246,82 @@ func (Adapter) ExtraResources(cr *paasv1alpha1.PrometheusInstance, targetName, n
 	service.SetGroupVersionKind(serviceGVK)
 	service.SetName(serviceName)
 	service.SetNamespace(namespace)
-	service.SetLabels(map[string]string{
-		"app.kubernetes.io/managed-by": FieldManager,
-		"paas.example.com/owner":       owner,
-	})
+	service.SetLabels(commonLabels(owner))
 	service.Object["spec"] = map[string]any{
 		"type":     "ClusterIP",
 		"selector": map[string]any{podSelectorLabel: targetName},
 		"ports": []any{
-			map[string]any{"name": "web", "port": int64(WebPort), "targetPort": "web"},
+			map[string]any{"name": "web", "port": int64(WebPort), "targetPort": "web"}, //nolint:goconst // "name" is an unrelated JSON key in each of its 3 occurrences
 		},
 	}
 
+	rbacExtras := scrapeRBACExtras(targetName, namespace, owner)
+
 	if cr.Spec.Ingress == nil {
-		return []reconciler.ExtraResource{
+		return append([]reconciler.ExtraResource{
 			{GVK: serviceGVK, Name: serviceName, Desired: service},
 			{GVK: ingress.GVK, Name: ingressName, Desired: nil},
-		}
+		}, rbacExtras...)
 	}
 
 	desiredIngress := ingress.Build(cr.Spec.Ingress, ingressName, namespace, owner, FieldManager, serviceName, WebPort)
 
-	return []reconciler.ExtraResource{
+	return append([]reconciler.ExtraResource{
 		{GVK: serviceGVK, Name: serviceName, Desired: service},
 		{GVK: ingress.GVK, Name: ingressName, Desired: desiredIngress},
+	}, rbacExtras...)
+}
+
+// scrapeRBACExtras builds the ServiceAccount + namespace-scoped Role +
+// RoleBinding letting the Prometheus workload itself (referenced via
+// spec.serviceAccountName in BuildManifest) list/watch Pods, Services and
+// Endpoints -- the objects its PodMonitors/ServiceMonitors resolve targets
+// through. Always created (never conditionally absent): every Prometheus
+// this operator manages needs this to scrape anything at all.
+func scrapeRBACExtras(targetName, namespace, owner string) []reconciler.ExtraResource {
+	labels := commonLabels(owner)
+
+	sa := &unstructured.Unstructured{}
+	sa.SetGroupVersionKind(serviceAccountGVK)
+	sa.SetName(targetName)
+	sa.SetNamespace(namespace)
+	sa.SetLabels(labels)
+
+	role := &unstructured.Unstructured{}
+	role.SetGroupVersionKind(roleGVK)
+	role.SetName(targetName)
+	role.SetNamespace(namespace)
+	role.SetLabels(labels)
+	role.Object["rules"] = []any{
+		map[string]any{
+			"apiGroups": []any{""},
+			"resources": []any{"pods", "services", "endpoints"},
+			"verbs":     []any{"get", "list", "watch"},
+		},
+	}
+
+	roleBinding := &unstructured.Unstructured{}
+	roleBinding.SetGroupVersionKind(roleBindingGVK)
+	roleBinding.SetName(targetName)
+	roleBinding.SetNamespace(namespace)
+	roleBinding.SetLabels(labels)
+	roleBinding.Object["roleRef"] = map[string]any{
+		"apiGroup": rbacGroup,
+		"kind":     "Role",
+		"name":     targetName,
+	}
+	roleBinding.Object["subjects"] = []any{
+		map[string]any{
+			"kind":      "ServiceAccount",
+			"name":      targetName,
+			"namespace": namespace,
+		},
+	}
+
+	return []reconciler.ExtraResource{
+		{GVK: serviceAccountGVK, Name: targetName, Desired: sa},
+		{GVK: roleGVK, Name: targetName, Desired: role},
+		{GVK: roleBindingGVK, Name: targetName, Desired: roleBinding},
 	}
 }
 

@@ -24,12 +24,15 @@ import (
 	paasv1alpha1 "github.com/bartvanbenthem/paas-operator/api/v1alpha1"
 )
 
+// testName is the CR/target name used throughout this file's tests.
+const testName = "test"
+
 func TestBuildManifestNamespaceScoped(t *testing.T) {
 	cr := &paasv1alpha1.PrometheusInstance{
 		Spec: paasv1alpha1.PrometheusInstanceSpec{Replicas: 1},
 	}
 
-	u := Adapter{}.BuildManifest(cr, "test", "monitoring-ns", "test")
+	u := Adapter{}.BuildManifest(cr, testName, "monitoring-ns", testName)
 
 	if ns := u.GetNamespace(); ns != "monitoring-ns" {
 		t.Fatalf("expected Prometheus namespace %q, got %q", "monitoring-ns", ns)
@@ -63,7 +66,7 @@ func TestBuildManifestStorage(t *testing.T) {
 		},
 	}
 
-	u := Adapter{}.BuildManifest(cr, "test", "default", "test")
+	u := Adapter{}.BuildManifest(cr, testName, "default", testName)
 
 	size, _, _ := unstructured.NestedString(u.Object, "spec", "storage", "volumeClaimTemplate", "spec", "resources", "requests", "storage")
 	if size != "5Gi" {
@@ -79,10 +82,10 @@ func TestExtraResourcesIngress(t *testing.T) {
 	t.Run("unset still builds the Service (needed in-cluster regardless of Ingress) but leaves the Ingress absent", func(t *testing.T) {
 		cr := &paasv1alpha1.PrometheusInstance{Spec: paasv1alpha1.PrometheusInstanceSpec{Replicas: 1}}
 
-		extras := Adapter{}.ExtraResources(cr, "test", "default", "test")
+		extras := Adapter{}.ExtraResources(cr, testName, "default", testName)
 
-		if len(extras) != 2 {
-			t.Fatalf("expected 2 extras, got %d", len(extras))
+		if len(extras) != 5 {
+			t.Fatalf("expected 5 extras, got %d", len(extras))
 		}
 		if extras[0].Name != "test-web" || extras[1].Name != "test-ingress" {
 			t.Fatalf("unexpected extra names: %q, %q", extras[0].Name, extras[1].Name)
@@ -103,9 +106,9 @@ func TestExtraResourcesIngress(t *testing.T) {
 			},
 		}
 
-		extras := Adapter{}.ExtraResources(cr, "test", "default", "test")
-		if len(extras) != 2 {
-			t.Fatalf("expected 2 extras, got %d", len(extras))
+		extras := Adapter{}.ExtraResources(cr, testName, "default", testName)
+		if len(extras) != 5 {
+			t.Fatalf("expected 5 extras, got %d", len(extras))
 		}
 
 		svc := extras[0]
@@ -113,7 +116,7 @@ func TestExtraResourcesIngress(t *testing.T) {
 			t.Fatalf("expected the Service to be desired")
 		}
 		selector, _, _ := unstructured.NestedString(svc.Desired.Object, "spec", "selector", "operator.prometheus.io/name")
-		if selector != "test" {
+		if selector != testName {
 			t.Fatalf("expected selector operator.prometheus.io/name=test, got %q", selector)
 		}
 
@@ -138,4 +141,71 @@ func TestExtraResourcesIngress(t *testing.T) {
 			t.Fatalf("expected Ingress backend service name test-web, got %q", backendName)
 		}
 	})
+}
+
+func TestBuildManifestServiceAccountName(t *testing.T) {
+	cr := &paasv1alpha1.PrometheusInstance{Spec: paasv1alpha1.PrometheusInstanceSpec{Replicas: 1}}
+	u := Adapter{}.BuildManifest(cr, testName, "default", testName)
+
+	sa, _, _ := unstructured.NestedString(u.Object, "spec", "serviceAccountName")
+	if sa != testName {
+		t.Fatalf("expected spec.serviceAccountName %q, got %q", testName, sa)
+	}
+}
+
+func TestExtraResourcesScrapeRBAC(t *testing.T) {
+	cr := &paasv1alpha1.PrometheusInstance{Spec: paasv1alpha1.PrometheusInstanceSpec{Replicas: 1}}
+
+	extras := Adapter{}.ExtraResources(cr, testName, "default", testName)
+	if len(extras) != 5 {
+		t.Fatalf("expected 5 extras, got %d", len(extras))
+	}
+
+	sa, role, roleBinding := extras[2], extras[3], extras[4]
+
+	if sa.GVK != serviceAccountGVK || sa.Name != testName || sa.Desired == nil {
+		t.Fatalf("unexpected ServiceAccount extra: %+v", sa)
+	}
+
+	if role.GVK != roleGVK || role.Name != testName || role.Desired == nil {
+		t.Fatalf("unexpected Role extra: %+v", role)
+	}
+	rules, _, _ := unstructured.NestedSlice(role.Desired.Object, "rules")
+	if len(rules) != 1 {
+		t.Fatalf("expected exactly one rule, got %d", len(rules))
+	}
+	rule, _ := rules[0].(map[string]any)
+	resources, _, _ := unstructured.NestedStringSlice(rule, "resources")
+	wantResources := []string{"pods", "services", "endpoints"}
+	if len(resources) != len(wantResources) {
+		t.Fatalf("expected resources %v, got %v", wantResources, resources)
+	}
+	for i, r := range wantResources {
+		if resources[i] != r {
+			t.Fatalf("expected resources %v, got %v", wantResources, resources)
+		}
+	}
+	verbs, _, _ := unstructured.NestedStringSlice(rule, "verbs")
+	wantVerbs := []string{"get", "list", "watch"}
+	if len(verbs) != len(wantVerbs) {
+		t.Fatalf("expected verbs %v, got %v", wantVerbs, verbs)
+	}
+
+	if roleBinding.GVK != roleBindingGVK || roleBinding.Name != testName || roleBinding.Desired == nil {
+		t.Fatalf("unexpected RoleBinding extra: %+v", roleBinding)
+	}
+	roleRefName, _, _ := unstructured.NestedString(roleBinding.Desired.Object, "roleRef", "name")
+	if roleRefName != testName {
+		t.Fatalf("expected roleRef.name %q, got %q", testName, roleRefName)
+	}
+	subjects, _, _ := unstructured.NestedSlice(roleBinding.Desired.Object, "subjects")
+	if len(subjects) != 1 {
+		t.Fatalf("expected exactly one subject, got %d", len(subjects))
+	}
+	subject, _ := subjects[0].(map[string]any)
+	subjectName, _, _ := unstructured.NestedString(subject, "name")
+	subjectNamespace, _, _ := unstructured.NestedString(subject, "namespace")
+	if subjectName != testName || subjectNamespace != "default" {
+		t.Fatalf("expected subject test/default, got %s/%s", subjectNamespace, subjectName)
+	}
 }
