@@ -93,14 +93,29 @@ func resourceListJSON(list corev1.ResourceList) map[string]any {
 	return out
 }
 
+// appSecretSuffix and rootSecretSuffix name the Secrets mariadb-operator
+// generates for the initial user's and root's passwords (see BuildManifest).
+// Deliberately kind-scoped ("-mariadb-app", not just "-app") -- CNPG
+// defaults its own auto-generated credentials Secret to the unscoped
+// "<name>-app", a name it does not let this operator override without
+// taking over generating and owning that password ourselves (via
+// bootstrap.initdb.secret, which requires a pre-existing Secret; see
+// internal/cnpg's package doc). A PostgresCluster and a MariaDBCluster with
+// the same CR name in the same namespace would otherwise silently fight
+// over one Secret, each vendor operator expecting its own key shape.
+const (
+	appSecretSuffix  = "-mariadb-app"
+	rootSecretSuffix = "-mariadb-root"
+)
+
 // BuildManifest builds the desired k8s.mariadb.com/v1alpha1 MariaDB object
 // for cr, ready to be applied via Server-Side Apply.
 //
 // The initial user's and root's passwords are referenced via
 // passwordSecretKeyRef/rootPasswordSecretKeyRef with generate: true, so
-// mariadb-operator creates and manages `<name>-app`/`<name>-root` Secrets
-// itself -- mirroring CNPG's own auto-generated `<cluster>-app` Secret
-// convention, since our DatabaseSpec (like CNPG's) has no password field.
+// mariadb-operator creates and manages the appSecretSuffix/rootSecretSuffix
+// Secrets itself, since our DatabaseSpec (like CNPG's) has no password
+// field.
 func (Adapter) BuildManifest(cr *paasv1alpha1.MariaDBCluster, name, namespace, ownerName string) *unstructured.Unstructured {
 	spec := cr.Spec
 
@@ -115,12 +130,12 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.MariaDBCluster, name, namespace, o
 		"database": spec.Database.Name,
 		"username": spec.Database.Owner,
 		"passwordSecretKeyRef": map[string]any{
-			"name":     name + "-app",
+			"name":     name + appSecretSuffix,
 			"key":      "password",
 			"generate": true,
 		},
 		"rootPasswordSecretKeyRef": map[string]any{
-			"name":     name + "-root",
+			"name":     name + rootSecretSuffix,
 			"key":      "password",
 			"generate": true,
 		},

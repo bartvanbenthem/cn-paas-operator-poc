@@ -154,3 +154,18 @@ func TestExtraResourcesDashboard(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildManifestSecretNamesAreKindScoped(t *testing.T) {
+	cr := &paasv1alpha1.MariaDBCluster{Spec: baseSpec()}
+	u := Adapter{}.BuildManifest(cr, "test", "default", "test")
+
+	appSecret, _, _ := unstructured.NestedString(u.Object, "spec", "passwordSecretKeyRef", "name")
+	if want := "test-mariadb-app"; appSecret != want {
+		t.Fatalf("expected passwordSecretKeyRef.name %q, got %q", want, appSecret)
+	}
+
+	rootSecret, _, _ := unstructured.NestedString(u.Object, "spec", "rootPasswordSecretKeyRef", "name")
+	if want := "test-mariadb-root"; rootSecret != want {
+		t.Fatalf("expected rootPasswordSecretKeyRef.name %q, got %q", want, rootSecret)
+	}
+}

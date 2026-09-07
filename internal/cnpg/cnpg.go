@@ -13,6 +13,19 @@
 // reconciliation loop (finalizers, SSA, status-mirroring) lives once in
 // internal/reconciler and is shared with every other vendor integration.
 //
+// BuildManifest never sets bootstrap.initdb.secret, so CNPG auto-generates
+// the app user's credentials Secret itself, always named "<cluster
+// name>-app" -- a name this operator cannot change without instead
+// pre-creating that Secret itself (bootstrap.initdb.secret requires an
+// existing kubernetes.io/basic-auth Secret, making this operator responsible
+// for generating and durably keeping its password stable across reconciles,
+// which nothing here currently does). Because that name is unscoped by
+// resource kind, a PostgresCluster and any other building block whose CR
+// shares its name in the same namespace can collide on it if that other
+// kind also defaults to "<name>-app" -- see internal/mariadb's
+// appSecretSuffix, which is deliberately kind-scoped for exactly this
+// reason.
+//
 // ExtraResources additionally creates a grafana-operator GrafanaDashboard
 // alongside a monitored Cluster (gated on spec.monitoring.enablePodMonitor),
 // so the Grafana in the same namespace picks it up automatically -- see
