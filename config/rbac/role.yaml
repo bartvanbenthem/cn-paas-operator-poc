@@ -90,6 +90,7 @@ rules:
   resources:
   - grafanainstances
   - mariadbclusters
+  - mongodbclusters
   - postgresclusters
   - prometheusinstances
   - rabbitmqclusters
@@ -107,6 +108,7 @@ rules:
   resources:
   - grafanainstances/finalizers
   - mariadbclusters/finalizers
+  - mongodbclusters/finalizers
   - postgresclusters/finalizers
   - prometheusinstances/finalizers
   - rabbitmqclusters/finalizers
@@ -118,6 +120,7 @@ rules:
   resources:
   - grafanainstances/status
   - mariadbclusters/status
+  - mongodbclusters/status
   - postgresclusters/status
   - prometheusinstances/status
   - rabbitmqclusters/status
@@ -130,6 +133,18 @@ rules:
   - postgresql.cnpg.io
   resources:
   - clusters
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - psmdb.percona.com
+  resources:
+  - perconaservermongodbs
   verbs:
   - create
   - delete

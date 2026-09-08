@@ -40,4 +40,7 @@ resources:
 - prometheusinstance_admin_role.yaml
 - prometheusinstance_editor_role.yaml
 - prometheusinstance_viewer_role.yaml
+- mongodbcluster_admin_role.yaml
+- mongodbcluster_editor_role.yaml
+- mongodbcluster_viewer_role.yaml
 

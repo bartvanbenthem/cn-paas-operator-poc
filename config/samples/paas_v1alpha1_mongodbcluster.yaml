@@ -1,0 +1,23 @@
+apiVersion: paas.example.com/v1alpha1
+kind: MongoDBCluster
+metadata:
+  labels:
+    app.kubernetes.io/name: paas-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: example-mongodb
+spec:
+  replicas: 3
+  storage:
+    size: 10Gi
+    # storageClass is optional; omit it to use the cluster's default
+    # StorageClass. Set it explicitly if your cluster doesn't have one
+    # (e.g. "storageClass: standard").
+  monitoring:
+    enablePodMonitor: true
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"

@@ -6,4 +6,5 @@ resources:
 - paas_v1alpha1_mariadbcluster.yaml
 - paas_v1alpha1_rabbitmqcluster.yaml
 - paas_v1alpha1_prometheusinstance.yaml
+- paas_v1alpha1_mongodbcluster.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples
