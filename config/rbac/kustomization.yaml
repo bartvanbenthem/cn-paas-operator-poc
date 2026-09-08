@@ -43,4 +43,7 @@ resources:
 - mongodbcluster_admin_role.yaml
 - mongodbcluster_editor_role.yaml
 - mongodbcluster_viewer_role.yaml
+- kafkacluster_admin_role.yaml
+- kafkacluster_editor_role.yaml
+- kafkacluster_viewer_role.yaml
 

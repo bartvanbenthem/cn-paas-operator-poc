@@ -220,6 +220,12 @@ func main() {
 		setupLog.Error(err, "Failed to create controller", "controller", controller.MongoDBClusterControllerName)
 		os.Exit(1)
 	}
+	if err := controller.NewKafkaClusterReconciler(
+		mgr.GetClient(), mgr.GetScheme(), mgr.GetEventRecorder("kafkacluster-operator"),
+	).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", controller.KafkaClusterControllerName)
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

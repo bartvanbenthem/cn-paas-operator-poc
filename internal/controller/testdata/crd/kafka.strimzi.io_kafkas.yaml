@@ -1,0 +1,110 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: kafkas.kafka.strimzi.io
+spec:
+  group: kafka.strimzi.io
+  names:
+    kind: Kafka
+    listKind: KafkaList
+    plural: kafkas
+    shortNames:
+    - k
+    singular: kafka
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          Trimmed, envtest-only copy of the real Kafka CRD from
+          github.com/strimzi/strimzi-kafka-operator (see
+          external-crds/crd-strimzi-kafka-operator-v1.2.0.yaml for the full,
+          vendored schema this was derived from). Only the fields
+          internal/strimzi's BuildManifest/ExtraResources actually read or
+          write are modeled here.
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              kafka:
+                properties:
+                  version:
+                    type: string
+                  listeners:
+                    type: array
+                    minItems: 1
+                    items:
+                      properties:
+                        name:
+                          type: string
+                        port:
+                          type: integer
+                        type:
+                          type: string
+                          enum:
+                          - internal
+                          - route
+                          - tlsroute
+                          - loadbalancer
+                          - nodeport
+                          - ingress
+                          - cluster-ip
+                        tls:
+                          type: boolean
+                      type: object
+                  metricsConfig:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                        - jmxPrometheusExporter
+                        - strimziMetricsReporter
+                      valueFrom:
+                        type: object
+                        properties:
+                          configMapKeyRef:
+                            type: object
+                            properties:
+                              key:
+                                type: string
+                              name:
+                                type: string
+                    required:
+                    - type
+                required:
+                - listeners
+                type: object
+            required:
+            - kafka
+            type: object
+          status:
+            properties:
+              conditions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                    reason:
+                      type: string
+                    message:
+                      type: string
+                    lastTransitionTime:
+                      type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
