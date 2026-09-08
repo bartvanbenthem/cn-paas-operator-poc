@@ -228,19 +228,28 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.MongoDBCluster, name, namespace, o
 	if spec.Monitoring.EnablePodMonitor {
 		replset["sidecars"] = []any{
 			map[string]any{
-				"name":    exporterContainerName,
-				"image":   exporterImage,
-				"command": []any{"/bin/sh", "-c"},
+				// percona/mongodb_exporter's image is FROM scratch with a
+				// single static ENTRYPOINT (["/mongodb_exporter"]) -- no
+				// shell, so no "command: sh -c" wrapper. Credentials go
+				// through the exporter's own MONGODB_USER/MONGODB_PASSWORD
+				// env vars (which it combines with a credential-less
+				// --mongodb.uri) rather than being embedded in the URI
+				// string: that avoids leaking them via ps/top on the node,
+				// and avoids a generated password containing URI-special
+				// characters (@, /, #, ...) corrupting the URI.
+				"name":  exporterContainerName,
+				"image": exporterImage,
 				"args": []any{
-					"mongodb_exporter --mongodb.uri=mongodb://$(" + clusterMonitorUserKey + "):$(" +
-						clusterMonitorPasswordKey + ")@localhost:27017/admin?ssl=false --collect-all --compatible-mode",
+					"--mongodb.uri=mongodb://localhost:27017/admin?ssl=false",
+					"--collect-all",
+					"--compatible-mode",
 				},
 				"ports": []any{
 					map[string]any{"name": "metrics", "containerPort": int64(exporterPort)},
 				},
 				"env": []any{
 					map[string]any{
-						"name": clusterMonitorUserKey,
+						"name": "MONGODB_USER",
 						"valueFrom": map[string]any{
 							"secretKeyRef": map[string]any{
 								"name": secretsName,
@@ -249,7 +258,7 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.MongoDBCluster, name, namespace, o
 						},
 					},
 					map[string]any{
-						"name": clusterMonitorPasswordKey,
+						"name": "MONGODB_PASSWORD",
 						"valueFrom": map[string]any{
 							"secretKeyRef": map[string]any{
 								"name": secretsName,

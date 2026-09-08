@@ -17,6 +17,7 @@ limitations under the License.
 package psmdb
 
 import (
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -128,21 +129,41 @@ func TestBuildManifestMonitoringSidecar(t *testing.T) {
 		if len(env) != 2 {
 			t.Fatalf("expected 2 env entries, got %d", len(env))
 		}
+		wantEnvNames := map[string]string{
+			"MONGODB_USER":     "MONGODB_CLUSTER_MONITOR_USER",
+			"MONGODB_PASSWORD": "MONGODB_CLUSTER_MONITOR_PASSWORD",
+		}
 		for _, e := range env {
 			entry, _ := e.(map[string]any)
+			envName, _, _ := unstructured.NestedString(entry, "name")
+			wantKey, ok := wantEnvNames[envName]
+			if !ok {
+				t.Fatalf("unexpected env var name %q", envName)
+			}
 			secretName, _, _ := unstructured.NestedString(entry, "valueFrom", "secretKeyRef", "name")
 			if secretName != "test-psmdb-secrets" {
 				t.Fatalf("expected env secretKeyRef.name %q, got %q", "test-psmdb-secrets", secretName)
 			}
+			secretKey, _, _ := unstructured.NestedString(entry, "valueFrom", "secretKeyRef", "key")
+			if secretKey != wantKey {
+				t.Fatalf("expected env %q to reference secret key %q, got %q", envName, wantKey, secretKey)
+			}
 		}
 
-		args, _, _ := unstructured.NestedSlice(sidecar, "args")
-		if len(args) != 1 {
-			t.Fatalf("expected 1 arg, got %d", len(args))
+		// No shell wrapper: percona/mongodb_exporter's image has no shell
+		// (FROM scratch, static ENTRYPOINT), so BuildManifest must not set
+		// "command" and credentials must not be embedded in --mongodb.uri.
+		if _, found, _ := unstructured.NestedStringSlice(sidecar, "command"); found {
+			t.Fatalf("expected no command override for the mongodb_exporter sidecar")
 		}
-		argStr, _ := args[0].(string)
-		if argStr == "" {
+		args, _, _ := unstructured.NestedStringSlice(sidecar, "args")
+		if len(args) == 0 {
 			t.Fatalf("expected non-empty mongodb_exporter args")
+		}
+		for _, a := range args {
+			if strings.Contains(a, "$(") {
+				t.Fatalf("expected no unexpanded $(VAR) reference in args, got %q", a)
+			}
 		}
 	})
 }
