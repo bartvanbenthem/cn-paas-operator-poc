@@ -11,12 +11,17 @@ opinionated ones of our own. Each vendor gets its own thin CRD under
 `MariaDBCluster` (for
 [mariadb-operator](https://github.com/mariadb-operator/mariadb-operator)),
 `RabbitMQCluster` (for the [RabbitMQ Cluster
-Operator](https://github.com/rabbitmq/cluster-operator)), and
+Operator](https://github.com/rabbitmq/cluster-operator)),
 `PrometheusInstance` (for the [Prometheus
-Operator](https://github.com/prometheus-operator/prometheus-operator)) —
+Operator](https://github.com/prometheus-operator/prometheus-operator)),
+`MongoDBCluster` (for the [Percona Server for MongoDB
+Operator](https://github.com/percona/percona-server-mongodb-operator)), and
+`KafkaCluster` (for the [Strimzi Kafka
+Operator](https://github.com/strimzi/strimzi-kafka-operator)) —
 reconciled into a full vendor object, so consumers get a working
-Postgres/Valkey/Grafana/MariaDB/RabbitMQ/Prometheus instance from ~10 lines
-of YAML instead of having to understand the vendor's much larger spec.
+Postgres/Valkey/Grafana/MariaDB/RabbitMQ/Prometheus/MongoDB/Kafka instance
+from ~10 lines of YAML instead of having to understand the vendor's much
+larger spec.
 
 ```yaml
 apiVersion: paas.example.com/v1alpha1
@@ -80,6 +85,24 @@ spec:
   retention: 15d
   storage:
     size: 10Gi
+---
+apiVersion: paas.example.com/v1alpha1
+kind: MongoDBCluster
+metadata:
+  name: example-mongodb
+spec:
+  replicas: 3
+  storage:
+    size: 10Gi
+---
+apiVersion: paas.example.com/v1alpha1
+kind: KafkaCluster
+metadata:
+  name: example-kafka
+spec:
+  replicas: 3
+  storage:
+    size: 100Gi
 ```
 
 ## How it works
@@ -98,38 +121,45 @@ type means writing the adapter, not another copy of the reconcile loop.
   lives.
 - `internal/cnpg/cnpg.go`, `internal/valkey/valkey.go`,
   `internal/grafana/grafana.go`, `internal/mariadb/mariadb.go`,
-  `internal/rabbitmq/rabbitmq.go`, and `internal/prometheus/prometheus.go` —
-  one `Adapter` implementation per vendor object: the target
+  `internal/rabbitmq/rabbitmq.go`, `internal/prometheus/prometheus.go`,
+  `internal/psmdb/psmdb.go`, and `internal/strimzi/strimzi.go` — one
+  `Adapter` implementation per vendor object: the target
   `GroupVersionKind`, how to build the desired vendor object from our CR's
   spec, and how to read phase/readiness back out of its status. None of the
   vendors' Go API types or CRD schemas are vendored — we don't own those
   CRDs, and their schemas are large and version-specific (see
   `crd-cnpg-v1.30.0.yaml`, `crd-valkey-v0.6.0.yaml`,
   `crd-grafana-v5.25.0.yaml`, `crd-mariadb-operator-v26.6.0.yaml`,
-  `crd-rabbitmq-cluster-operator-v2.22.5.yaml`, and
-  `crd-prometheus-operator-v0.93.1.yaml` at the repo root). Instead the
-  target is addressed purely through controller-runtime's dynamic client
-  (`unstructured.Unstructured` + a `schema.GroupVersionKind`), and the
-  desired object is built as a plain `map[string]any` applied via
+  `crd-rabbitmq-cluster-operator-v2.22.5.yaml`,
+  `crd-prometheus-operator-v0.93.1.yaml`,
+  `crd-percona-server-mongodb-operator-v1.23.0.yaml`, and
+  `crd-strimzi-kafka-operator-v1.2.0.yaml`, all under `external-crds/`).
+  Instead the target is addressed purely through controller-runtime's
+  dynamic client (`unstructured.Unstructured` + a `schema.GroupVersionKind`),
+  and the desired object is built as a plain `map[string]any` applied via
   Server-Side Apply (`client.Patch(ctx, obj, client.Apply, ...)`). This keeps
   the operator decoupled from any one vendor version.
 - `api/v1alpha1/postgrescluster_types.go` / `valkeycluster_types.go` /
   `grafanainstance_types.go` / `mariadbcluster_types.go` /
-  `rabbitmqcluster_types.go` / `prometheusinstance_types.go` — our own CRDs,
+  `rabbitmqcluster_types.go` / `prometheusinstance_types.go` /
+  `mongodbcluster_types.go` / `kafkacluster_types.go` — our own CRDs,
   scaffolded and generated the normal kubebuilder way
   (`+kubebuilder:validation`/`+kubebuilder:printcolumn` markers,
   `controller-gen` for the CRD YAML and deepcopy code).
 - `internal/controller/postgrescluster_controller.go` /
   `valkeycluster_controller.go` / `grafanainstance_controller.go` /
   `mariadbcluster_controller.go` / `rabbitmqcluster_controller.go` /
-  `prometheusinstance_controller.go` — a few lines each: they just
-  instantiate `GenericReconciler` with the matching adapter (`cnpg.Adapter{}`
-  / `valkey.Adapter{}` / `grafana.Adapter{}` / `mariadb.Adapter{}` /
-  `rabbitmq.Adapter{}` / `prometheus.Adapter{}`) and register it with the
-  manager. RBAC markers for both our own CRD and the vendor's live here.
-- One paas CR maps to exactly one same-named vendor object. On delete, the
-  operator removes the vendor object before releasing its own finalizer, so
-  e.g. `kubectl delete postgrescluster` also tears down the database.
+  `prometheusinstance_controller.go` / `mongodbcluster_controller.go` /
+  `kafkacluster_controller.go` — a few lines each: they just instantiate
+  `GenericReconciler` with the matching adapter (`cnpg.Adapter{}` /
+  `valkey.Adapter{}` / `grafana.Adapter{}` / `mariadb.Adapter{}` /
+  `rabbitmq.Adapter{}` / `prometheus.Adapter{}` / `psmdb.Adapter{}` /
+  `strimzi.Adapter{}`) and register it with the manager. RBAC markers for
+  both our own CRD and the vendor's live here.
+- One paas CR maps to exactly one same-named vendor object (`KafkaCluster` is
+  the one exception with two: see its own note in Scope below). On delete,
+  the operator removes the vendor object before releasing its own finalizer,
+  so e.g. `kubectl delete postgrescluster` also tears down the database.
 - Status is refreshed by polling (15s while not ready, 5m once ready) rather
   than a push watch: `unstructured.Unstructured` isn't registered with the
   manager's scheme, so an `Owns()`-style watch isn't available the way it is
@@ -137,11 +167,14 @@ type means writing the adapter, not another copy of the reconcile loop.
   would remove the poll delay, if it's ever worth the complexity.
 - `internal/controller/testdata/crd/postgresql.cnpg.io_clusters.yaml`,
   `valkey.io_valkeyclusters.yaml`, `grafana.integreatly.org_grafanas.yaml`,
-  `k8s.mariadb.com_mariadbs.yaml`, `rabbitmq.com_rabbitmqclusters.yaml`, and
-  `monitoring.coreos.com_prometheuses.yaml` are the real vendor CRDs, loaded
-  into `envtest` so the controller tests validate the generated objects
-  against each vendor's actual OpenAPI schema — not just against our own
-  assumptions about its shape.
+  `k8s.mariadb.com_mariadbs.yaml`, `rabbitmq.com_rabbitmqclusters.yaml`,
+  `monitoring.coreos.com_prometheuses.yaml`,
+  `psmdb.percona.com_perconaservermongodbs.yaml`, and
+  `kafka.strimzi.io_kafkas.yaml` / `kafka.strimzi.io_kafkanodepools.yaml` are
+  (trimmed copies of, for the last three) the real vendor CRDs, loaded into
+  `envtest` so the controller tests validate the generated objects against
+  each vendor's actual OpenAPI schema — not just against our own assumptions
+  about its shape.
 
 ### Adding another vendor integration
 
@@ -187,8 +220,12 @@ creates a default vhost and user itself, writing credentials to a
 Prometheus runs with ephemeral storage), optional `resources`, and optional
 `ingress` (the Prometheus Operator creates no Service of its own for
 Prometheus, so setting `ingress` also makes this operator create a
-ClusterIP Service fronting it). All
-`resources` fields reuse `corev1.ResourceRequirements` directly, except
+ClusterIP Service fronting it); `MongoDBCluster` exposes `replicas`, `image`,
+`storage.size`, `storage.storageClass`, optional `resources`, optional
+`monitoring.enablePodMonitor`, and optional `expose`; `KafkaCluster` exposes
+`replicas`, `version`, `storage.size`, `storage.storageClass`, optional
+`resources`, optional `monitoring.enablePodMonitor`, and optional `expose`.
+All `resources` fields reuse `corev1.ResourceRequirements` directly, except
 `GrafanaInstance`, which doesn't expose one: the real field lives deep
 inside `spec.deployment.spec.template.spec.containers[].resources` (keyed by
 container name) rather than as a simple top-level object, so it was left out
@@ -200,10 +237,46 @@ plugins, jsonnet, service accounts, etc.; mariadb-operator's TLS,
 replication (non-Galera), MaxScale, backups, etc.; the RabbitMQ Cluster
 Operator's TLS, plugins, definitions import, affinity, etc.; the Prometheus
 Operator's rule/scrape-config selectors, remote write, Alertmanager
-discovery, affinity, etc.) is left at that vendor's own defaults. Extending
-a mapping means adding a field to the CR's `*Spec` type in `api/v1alpha1/`,
-running `make manifests generate`, and threading it through that vendor's
+discovery, affinity, etc.; the Percona Server for MongoDB Operator's
+sharding, backups, PMM, custom users, TLS, etc.; the Strimzi Kafka
+Operator's `Kafka.spec.kafka.config` broker tuning, Cruise Control, Kafka
+Connect/MirrorMaker/Bridge, entity operator, dedicated controller/broker
+node pools, etc.) is left at that vendor's own defaults. Extending a mapping
+means adding a field to the CR's `*Spec` type in `api/v1alpha1/`, running
+`make manifests generate`, and threading it through that vendor's
 `BuildManifest` in `internal/<vendor>/`.
+
+`MongoDBCluster` and `KafkaCluster` also diverge from the rest in shape, not
+just field count:
+- `MongoDBCluster` has no `database.name`/`database.owner` fields the way
+  `PostgresCluster`/`MariaDBCluster` do — MongoDB has no bootstrap-database-
+  with-an-owning-role concept to bootstrap (databases/collections are
+  created implicitly on first write).
+- `KafkaCluster` maps to **two** vendor objects, not one: the Strimzi Kafka
+  Operator is KRaft-only (ZooKeeper has been fully removed) and a `Kafka`
+  does nothing without at least one `KafkaNodePool` supplying its controller
+  and broker nodes. `KafkaCluster`'s single `replicas` field sizes one
+  combined controller+broker `KafkaNodePool`, which `internal/strimzi`
+  always creates alongside the `Kafka` (unconditionally, not gated on
+  monitoring) — Strimzi's own docs call a combined pool valid and the right
+  shape for small/dev clusters (roughly up to 5 brokers); dedicated
+  controller/broker pools are out of scope. `KafkaClusterStatus` also has no
+  replica-count field, unlike every other `*ClusterStatus` here — Strimzi's
+  `Kafka.status` itself has none (only `status.conditions[]`), so readiness
+  is derived purely from its `Ready` condition.
+- `MongoDBCluster`'s and `KafkaCluster`'s vendor operators (Percona Server
+  for MongoDB Operator, Strimzi) have no native PodMonitor/ServiceMonitor of
+  their own the way CNPG/mariadb-operator do — `monitoring.enablePodMonitor`
+  on these two instead makes `internal/psmdb`/`internal/strimzi` build a
+  `PodMonitor` directly (the same workaround `internal/valkey` uses for
+  valkey-operator). For `MongoDBCluster` this also injects a
+  `percona/mongodb_exporter` sidecar into the replica set pod, using
+  credentials from the operator's own auto-generated `clusterMonitor`
+  system user; for `KafkaCluster` it instead turns on the modern Strimzi
+  Metrics Reporter (`spec.kafka.metricsConfig.type: strimziMetricsReporter`,
+  a native Kafka plugin, not a sidecar) — Percona's/Strimzi's own PMM/JMX
+  based monitoring stacks are not used, since every other building block
+  here standardizes on the Prometheus Operator + Grafana instead.
 
 Notes on what's deliberately out of scope:
 - valkey-operator also defines a `ValkeyNode` CRD, but it's explicitly
@@ -223,6 +296,18 @@ Notes on what's deliberately out of scope:
   `ServiceMonitor`/`PodMonitor` objects are expected to be created
   separately (e.g. by CNPG's or mariadb-operator's own `MonitoringSpec`) and
   are simply discovered via the empty selectors `BuildManifest` sets.
+- the Percona Server for MongoDB Operator also defines
+  `PerconaServerMongoDBBackup`/`PerconaServerMongoDBRestore`/
+  `PerconaServerMongoDBClusterSync` CRDs; this operator only targets
+  `PerconaServerMongoDB` itself, the actual cluster. Sharded topologies
+  (multiple replica sets, `mongos`) are also out of scope — `MongoDBCluster`
+  always creates a single, non-sharded replica set named `rs0`.
+- the Strimzi Kafka Operator also defines `KafkaTopic`/`KafkaUser`/
+  `KafkaConnect`/`KafkaConnector`/`KafkaMirrorMaker2`/`KafkaBridge`/
+  `KafkaRebalance` CRDs (and Strimzi's own `entityOperator`, Cruise Control,
+  Kafka Connect); this operator only targets `Kafka` (plus the one
+  `KafkaNodePool` it requires, see above), not any of the surrounding
+  ecosystem.
 
 ## Verified while building this
 
@@ -230,28 +315,39 @@ Notes on what's deliberately out of scope:
 deepcopy code via `controller-gen`), `make lint` (golangci-lint, 0 issues),
 and `make test` (a real `envtest` API server, with our CRDs and CNPG's,
 valkey-operator's, grafana-operator's, mariadb-operator's, the RabbitMQ
-Cluster Operator's, and the Prometheus Operator's actual CRDs all loaded —
-see above) all pass; all six controller tests exercise finalizer-add,
-Server-Side Apply of the generated vendor object, and the status-mirroring
-logic end to end. Not run: anything against a live cluster with CNPG,
+Cluster Operator's, the Prometheus Operator's, the Percona Server for
+MongoDB Operator's, and the Strimzi Kafka Operator's actual (trimmed, for
+the last two) CRDs all loaded — see above) all pass; all eight controller
+tests exercise finalizer-add, Server-Side Apply of the generated vendor
+object(s), and the status-mirroring logic end to end (`KafkaCluster`'s two
+tests also assert the `KafkaNodePool` extra is always present regardless of
+the monitoring toggle). Not run: anything against a live cluster with CNPG,
 valkey-operator, grafana-operator, mariadb-operator, the RabbitMQ Cluster
-Operator, or the Prometheus Operator actually installed and reconciling —
-do that before trusting this in anything real (the Grafana mapping in
-particular is untested against a live grafana-operator: the
-`deployment.spec.replicas` and `persistentVolumeClaim` paths are correct
-per its CRD schema, but its actual reconciliation behavior hasn't been
-exercised end to end; same caveat for `MariaDBCluster`/`RabbitMQCluster`/
-`PrometheusInstance` against a live mariadb-operator/RabbitMQ Cluster
-Operator/Prometheus Operator).
+Operator, the Prometheus Operator, the Percona Server for MongoDB Operator,
+or the Strimzi Kafka Operator actually installed and reconciling — do that
+before trusting this in anything real (the Grafana mapping in particular is
+untested against a live grafana-operator: the `deployment.spec.replicas`
+and `persistentVolumeClaim` paths are correct per its CRD schema, but its
+actual reconciliation behavior hasn't been exercised end to end; same
+caveat for `MariaDBCluster`/`RabbitMQCluster`/`PrometheusInstance`/
+`MongoDBCluster`/`KafkaCluster` against a live mariadb-operator/RabbitMQ
+Cluster Operator/Prometheus Operator/Percona Server for MongoDB Operator/
+Strimzi Kafka Operator — `MongoDBCluster`'s exporter-sidecar wiring and
+`KafkaCluster`'s `KafkaNodePool` linkage are the two mappings with the most
+moving parts of any building block here, so double-check `Ready` actually
+flips true, the `PodMonitor` picks up real scrape targets, and the Grafana
+dashboards render real panel data before relying on them).
 
 ## Installing the Dependency Operators
 
 paas-operator only ever talks to the vendor CRDs (CNPG's `Cluster`,
 valkey-operator's `ValkeyCluster`, grafana-operator's `Grafana`,
 mariadb-operator's `MariaDB`, the RabbitMQ Cluster Operator's
-`RabbitmqCluster`, the Prometheus Operator's `Prometheus`) via Server-Side
-Apply — it never installs the vendor operators themselves. Each one has to
-be running in the cluster *before*
+`RabbitmqCluster`, the Prometheus Operator's `Prometheus`, the Percona
+Server for MongoDB Operator's `PerconaServerMongoDB`, and the Strimzi Kafka
+Operator's `Kafka`/`KafkaNodePool`) via Server-Side Apply — it never
+installs the vendor operators themselves. Each one has to be running in the
+cluster *before*
 paas-operator can reconcile anything, otherwise `BuildManifest`'s
 Server-Side Apply calls fail because the target CRD doesn't exist yet. Most
 ship a Helm chart; the RabbitMQ Cluster Operator ships a plain manifest
@@ -285,7 +381,7 @@ kubectl apply --server-side -f \
   https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.30/releases/cnpg-1.30.0.yaml
 ```
 
-`crd-cnpg-v1.30.0.yaml` at the repo root is the CRD bundle this operator was
+`external-crds/crd-cnpg-v1.30.0.yaml` is the CRD bundle this operator was
 built and tested against — both routes above install the matching 1.30.0
 release.
 
@@ -308,7 +404,7 @@ kubectl get crd valkeyclusters.valkey.io
 Manifest fallback (no Helm): valkey-operator doesn't publish a bundled
 `install.yaml`; deploy from source instead —
 `kubectl apply -k github.com/valkey-io/valkey-operator/config/default?ref=v0.6.0`.
-`crd-valkey-v0.6.0.yaml` at the repo root is the CRD this operator was built
+`external-crds/crd-valkey-v0.6.0.yaml` is the CRD this operator was built
 and tested against — the Helm chart above installs the matching `v0.6.0`
 appVersion.
 
@@ -330,7 +426,7 @@ kubectl get crd grafanas.grafana.integreatly.org
 Manifest fallback (no Helm): see the [grafana-operator Kustomize
 guide](https://grafana.github.io/grafana-operator/docs/installation/kustomize/),
 or `kubectl apply -k github.com/grafana/grafana-operator/config/default?ref=v5.25.0`.
-`crd-grafana-v5.25.0.yaml` at the repo root is the CRD this operator was
+`external-crds/crd-grafana-v5.25.0.yaml` is the CRD this operator was
 built and tested against — the Helm chart above installs the matching
 `5.25.0` version.
 
@@ -355,8 +451,9 @@ kubectl get crd mariadbs.k8s.mariadb.com
 Manifest fallback (no Helm): mariadb-operator doesn't publish a bundled
 `install.yaml`; the Helm charts (also available as OCI images, see the
 [Helm doc](https://github.com/mariadb-operator/mariadb-operator/blob/main/docs/helm.md))
-are the supported install path. `crd-mariadb-operator-v26.6.0.yaml` at the
-repo root is the CRD this operator was built and tested against — the Helm
+are the supported install path.
+`external-crds/crd-mariadb-operator-v26.6.0.yaml` is the CRD this operator
+was built and tested against — the Helm
 charts above install the matching `26.6.0` release.
 
 ### RabbitMQ Cluster Operator (for `RabbitMQCluster`)
@@ -376,7 +473,7 @@ kubectl get crd rabbitmqclusters.rabbitmq.com
 The RabbitMQ Cluster Operator doesn't publish an official Helm chart — the
 manifest above (installing into its own `rabbitmq-system` namespace) is the
 project's own recommended install path.
-`crd-rabbitmq-cluster-operator-v2.22.5.yaml` at the repo root is the CRD
+`external-crds/crd-rabbitmq-cluster-operator-v2.22.5.yaml` is the CRD
 this operator was built and tested against — the manifest above installs
 the matching `2.22.5` release.
 
@@ -414,10 +511,71 @@ kubectl apply --server-side -f \
   https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.93.1/bundle.yaml
 ```
 
-`crd-prometheus-operator-v0.93.1.yaml` at the repo root is the CRD this
+`external-crds/crd-prometheus-operator-v0.93.1.yaml` is the CRD this
 operator was built and tested against — both routes above install the
 matching `0.93.1` release (`kube-prometheus-stack` `89.2.0` pins
 `appVersion: v0.93.1`).
+
+### Percona Server for MongoDB Operator (for `MongoDBCluster`)
+
+Percona ships CRDs and operator as two separate charts — install both:
+
+```sh
+helm repo add percona https://percona.github.io/percona-helm-charts/
+helm repo update
+helm install psmdb-operator-crds percona/psmdb-operator-crds \
+  -n psmdb-operator-system --create-namespace
+helm install psmdb-operator percona/psmdb-operator \
+  --version 1.23.0 -n psmdb-operator-system
+```
+
+Verify:
+
+```sh
+kubectl get pods -n psmdb-operator-system
+kubectl get crd perconaservermongodbs.psmdb.percona.com
+```
+
+Manifest fallback (no Helm):
+
+```sh
+kubectl apply --server-side -f \
+  https://raw.githubusercontent.com/percona/percona-server-mongodb-operator/v1.23.0/deploy/bundle.yaml
+```
+
+`external-crds/crd-percona-server-mongodb-operator-v1.23.0.yaml` is the CRD
+bundle this operator was built and tested against — both routes above
+install the matching `1.23.0` release. Note the Percona operator's own
+native monitoring path (PMM) isn't what `MongoDBCluster.spec.monitoring`
+drives — see Scope above.
+
+### Strimzi Kafka Operator (for `KafkaCluster`)
+
+```sh
+helm install strimzi-kafka-operator \
+  oci://quay.io/strimzi-helm/strimzi-kafka-operator \
+  --version 1.2.0 -n strimzi-operator-system --create-namespace
+```
+
+Verify:
+
+```sh
+kubectl get pods -n strimzi-operator-system
+kubectl get crd kafkas.kafka.strimzi.io kafkanodepools.kafka.strimzi.io
+```
+
+Manifest fallback (no Helm):
+
+```sh
+kubectl apply --server-side -f \
+  https://github.com/strimzi/strimzi-kafka-operator/releases/download/1.2.0/strimzi-cluster-operator-1.2.0.yaml \
+  -n strimzi-operator-system
+```
+
+`external-crds/crd-strimzi-kafka-operator-v1.2.0.yaml` is the CRD bundle
+this operator was built and tested against — both routes above install the
+matching `1.2.0` release. Strimzi is KRaft-only as of this version (no
+ZooKeeper to install separately).
 
 ### Once the dependency operators are up
 
@@ -425,7 +583,8 @@ Install paas-operator's own CRDs and controller (see below), then the
 samples in `config/samples/` — `paas_v1alpha1_postgrescluster.yaml`,
 `paas_v1alpha1_valkeycluster.yaml`, `paas_v1alpha1_grafanainstance.yaml`,
 `paas_v1alpha1_mariadbcluster.yaml`, `paas_v1alpha1_rabbitmqcluster.yaml`,
-`paas_v1alpha1_prometheusinstance.yaml` — double as a smoke test that each
+`paas_v1alpha1_prometheusinstance.yaml`, `paas_v1alpha1_mongodbcluster.yaml`,
+`paas_v1alpha1_kafkacluster.yaml` — double as a smoke test that each
 dependency operator is reachable and correctly versioned.
 
 ## Getting Started
@@ -438,7 +597,7 @@ dependency operator is reachable and correctly versioned.
 - The dependency operators installed — see "Installing the Dependency
   Operators" above — for whichever CRs (`PostgresCluster`, `ValkeyCluster`,
   `GrafanaInstance`, `MariaDBCluster`, `RabbitMQCluster`,
-  `PrometheusInstance`) you plan to create.
+  `PrometheusInstance`, `MongoDBCluster`, `KafkaCluster`) you plan to create.
 
 ### To Deploy on the cluster
 **Build and push your image to the location specified by `IMG`:**
