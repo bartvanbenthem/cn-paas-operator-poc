@@ -364,7 +364,7 @@ applying `config/samples/` or your own CRs.
 helm repo add cnpg https://cloudnative-pg.github.io/charts
 helm repo update
 helm upgrade --install cnpg cnpg/cloudnative-pg \
-  -n cnpg-system --create-namespace
+  --version 1.30.0 -n cnpg-system --create-namespace
 ```
 
 Verify:
@@ -391,7 +391,7 @@ release.
 helm repo add valkey https://valkey.io/valkey-helm
 helm repo update
 helm install valkey-operator valkey/valkey-operator \
-  -n valkey-operator-system --create-namespace
+  --version 0.6.0 -n valkey-operator-system --create-namespace
 ```
 
 Verify:
@@ -524,7 +524,7 @@ Percona ships CRDs and operator as two separate charts — install both:
 helm repo add percona https://percona.github.io/percona-helm-charts/
 helm repo update
 helm install psmdb-operator-crds percona/psmdb-operator-crds \
-  -n psmdb-operator-system --create-namespace
+  --version 1.23.0 -n psmdb-operator-system --create-namespace
 helm install psmdb-operator percona/psmdb-operator \
   --version 1.23.0 -n psmdb-operator-system
 ```
