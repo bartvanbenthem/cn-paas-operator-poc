@@ -7,7 +7,7 @@
 // (unstructured.Unstructured), and the desired object is built as a plain
 // map applied via Server-Side Apply. This keeps the operator decoupled from
 // any specific grafana-operator version. See crd-grafana-v5.25.0.yaml at the
-// repo root for the schema this was built against.
+// external-crds/ folder for the schema this was built against.
 //
 // grafana-operator also ships a large family of child CRDs (GrafanaDashboard,
 // GrafanaDatasource, GrafanaFolder, GrafanaAlertRuleGroup, ...) that
@@ -22,7 +22,7 @@
 // PrometheusInstance (see GrafanaInstanceSpec.PrometheusRef), because that
 // pairing is inherent to standing up a usable Grafana and every building
 // block's own GrafanaDashboard (internal/cnpg, ...) depends on it existing.
-// See crd-grafana-datasource-v5.25.0.yaml at the repo root for the schema
+// See crd-grafana-datasource-v5.25.0.yaml in external-crds/ for the schema
 // this was built against.
 //
 // Adapter implements internal/reconciler's Adapter interface, so the actual

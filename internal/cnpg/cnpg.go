@@ -30,8 +30,8 @@
 // alongside a monitored Cluster (gated on spec.monitoring.enablePodMonitor),
 // so the Grafana in the same namespace picks it up automatically -- see
 // internal/grafana's package doc for the instanceSelector/datasource
-// convention this relies on. See crd-grafana-dashboard-v5.25.0.yaml at the
-// repo root for the GrafanaDashboard schema this was built against.
+// convention this relies on. See crd-grafana-dashboard-v5.25.0.yaml in
+// external-crds/ for the GrafanaDashboard schema this was built against.
 package cnpg
 
 import (

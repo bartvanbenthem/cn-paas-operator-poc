@@ -7,7 +7,7 @@
 // client (unstructured.Unstructured), and the desired object is built as a
 // plain map applied via Server-Side Apply. This keeps the operator decoupled
 // from any specific mariadb-operator version. See
-// crd-mariadb-operator-v26.6.0.yaml at the repo root for the schema this was
+// crd-mariadb-operator-v26.6.0.yaml in external-crds/ for the schema this was
 // built against.
 //
 // Adapter implements internal/reconciler's Adapter interface, so the actual
@@ -18,8 +18,8 @@
 // alongside a monitored MariaDB (gated on spec.monitoring.enablePodMonitor),
 // so the Grafana in the same namespace picks it up automatically -- see
 // internal/grafana's package doc for the instanceSelector/datasource
-// convention this relies on. See crd-grafana-dashboard-v5.25.0.yaml at the
-// repo root for the GrafanaDashboard schema this was built against.
+// convention this relies on. See crd-grafana-dashboard-v5.25.0.yaml in
+// external-crds/ for the GrafanaDashboard schema this was built against.
 package mariadb
 
 import (

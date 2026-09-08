@@ -6,7 +6,7 @@
 // controller-runtime's dynamic client (unstructured.Unstructured), and the
 // desired object is built as a plain map applied via Server-Side Apply.
 // This keeps the operator decoupled from any specific valkey-operator
-// version. See crd-valkey-v0.6.0.yaml at the repo root for the schema this
+// version. See crd-valkey-v0.6.0.yaml in external-crds/ for the schema this
 // was built against.
 //
 // ValkeyCluster's own child ValkeyNode CRD is not targeted here: it is an
@@ -25,7 +25,7 @@
 // internal/prometheus's package doc for the namespace-scoping convention
 // and internal/grafana's for the instanceSelector/datasource one. See
 // crd-prometheus-podmonitor-v0.93.1.yaml and
-// crd-grafana-dashboard-v5.25.0.yaml at the repo root for the schemas this
+// crd-grafana-dashboard-v5.25.0.yaml in external-crds/ for the schemas this
 // was built against.
 package valkey
 

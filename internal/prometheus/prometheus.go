@@ -8,8 +8,8 @@
 // through controller-runtime's dynamic client (unstructured.Unstructured),
 // and the desired object is built as a plain map applied via Server-Side
 // Apply. This keeps the operator decoupled from any specific Prometheus
-// Operator version. See crd-prometheus-operator-v0.93.1.yaml at the repo
-// root for the schema this was built against.
+// Operator version. See crd-prometheus-operator-v0.93.1.yaml in
+// external-crds/ for the schema this was built against.
 //
 // The generated Prometheus always selects ServiceMonitors/PodMonitors from
 // its own namespace only: serviceMonitorNamespaceSelector and
