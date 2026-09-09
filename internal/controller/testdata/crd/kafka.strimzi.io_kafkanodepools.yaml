@@ -71,6 +71,8 @@ spec:
                           type: string
                           enum:
                           - shared
+                        deleteClaim:
+                          type: boolean
               resources:
                 type: object
                 properties:

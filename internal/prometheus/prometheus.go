@@ -209,6 +209,17 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.PrometheusInstance, name, namespac
 				"spec": pvcSpec,
 			},
 		}
+		// persistentVolumeClaimRetentionPolicy defaults to Retain in the
+		// Prometheus Operator CRD (requires Kubernetes 1.27+, or 1.23-1.26
+		// with the StatefulSetAutoDeletePVC feature gate); set whenDeleted to
+		// Delete so the PVC is cleaned up when the Prometheus is deleted,
+		// matching the finalizer-gated deletion this operator already
+		// performs for every other child object. whenScaled is deliberately
+		// left unset (defaults to Retain) so scaling replicas down doesn't
+		// drop data.
+		promSpec["persistentVolumeClaimRetentionPolicy"] = map[string]any{
+			"whenDeleted": "Delete",
+		}
 	}
 
 	resources := map[string]any{}

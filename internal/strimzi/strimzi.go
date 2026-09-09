@@ -206,11 +206,16 @@ func (Adapter) ExtraResources(cr *paasv1alpha1.KafkaCluster, targetName, namespa
 	spec := cr.Spec
 	nodePoolName := targetName + nodePoolSuffix
 
+	// deleteClaim defaults to false in the Strimzi CRD; set it to true so the
+	// PVC is cleaned up when the KafkaNodePool (and its Kafka) are deleted,
+	// matching the finalizer-gated deletion this operator already performs
+	// for every other child object.
 	volume := map[string]any{
 		"id":            int64(0),
 		"type":          "persistent-claim",
 		"size":          spec.Storage.Size,
 		"kraftMetadata": "shared",
+		"deleteClaim":   true,
 	}
 	if spec.Storage.StorageClass != "" {
 		volume["class"] = spec.Storage.StorageClass

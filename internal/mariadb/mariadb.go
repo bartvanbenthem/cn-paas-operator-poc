@@ -119,7 +119,16 @@ const (
 func (Adapter) BuildManifest(cr *paasv1alpha1.MariaDBCluster, name, namespace, ownerName string) *unstructured.Unstructured {
 	spec := cr.Spec
 
-	storage := map[string]any{"size": spec.Storage.Size}
+	// pvcRetentionPolicy.whenDeleted defaults to Retain in the mariadb-operator
+	// CRD; set it to Delete so the PVCs are cleaned up when the MariaDB (and
+	// its underlying StatefulSet) is deleted, matching the finalizer-gated
+	// deletion this operator already performs for every other child object.
+	// whenScaled is deliberately left unset (defaults to Retain) so scaling
+	// replicas down doesn't drop data.
+	storage := map[string]any{
+		"size":               spec.Storage.Size,
+		"pvcRetentionPolicy": map[string]any{"whenDeleted": "Delete"},
+	}
 	if spec.Storage.StorageClass != "" {
 		storage["storageClassName"] = spec.Storage.StorageClass
 	}

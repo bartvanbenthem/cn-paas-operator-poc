@@ -150,7 +150,11 @@ func resourceListJSON(list corev1.ResourceList) map[string]any {
 func (Adapter) BuildManifest(cr *paasv1alpha1.ValkeyCluster, name, namespace, ownerName string) *unstructured.Unstructured {
 	spec := cr.Spec
 
-	persistence := map[string]any{"size": spec.Persistence.Size}
+	// reclaimPolicy defaults to Retain in the valkey-operator CRD; set it to
+	// Delete so the managed PVC is cleaned up when the ValkeyCluster (and its
+	// ValkeyNodes) are deleted, matching the finalizer-gated deletion this
+	// operator already performs for every other child object.
+	persistence := map[string]any{"size": spec.Persistence.Size, "reclaimPolicy": "Delete"}
 	if spec.Persistence.StorageClass != "" {
 		persistence["storageClassName"] = spec.Persistence.StorageClass
 	}

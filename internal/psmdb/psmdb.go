@@ -287,6 +287,11 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.MongoDBCluster, name, namespace, o
 	u.SetName(name)
 	u.SetNamespace(namespace)
 	u.SetLabels(commonLabels(ownerName))
+	// percona.com/delete-psmdb-pvc is off by default in the Percona operator;
+	// setting it here has the Percona operator itself clean up the PVCs when
+	// this PerconaServerMongoDB is deleted, matching the finalizer-gated
+	// deletion this operator already performs for every other child object.
+	u.SetFinalizers([]string{"percona.com/delete-psmdb-pvc"})
 	u.Object["spec"] = clusterSpec
 
 	return u
