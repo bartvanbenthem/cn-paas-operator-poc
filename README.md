@@ -702,6 +702,26 @@ kubectl set image deployment/loki-operator-controller-manager -n loki-operator \
   manager=docker.io/grafana/loki-operator:0.11.0
 ```
 
+One more overlay default to fix before creating any `LokiInstance`: the
+`community` overlay's `controller_manager_config.yaml` ships
+`featureGates.lokiStackGateway: true`. With that feature gate on, the Loki
+Operator refuses every `LokiStack` that doesn't set `spec.tenants`
+(`Invalid tenants configuration: TenantsSpec cannot be nil when gateway
+flag is enabled`, `Degraded`) — but `internal/loki`'s `BuildManifest`
+deliberately never sets `spec.tenants` (see its package doc comment), since
+OIDC/OpenShift OAuth tenant config is out of scope here. Turn the gateway
+feature gate off so the operator matches that design and stands up
+single-tenant `LokiStack`s the way `internal/loki` expects:
+
+```sh
+kubectl get configmap loki-operator-manager-config -n loki-operator -o jsonpath='{.data.controller_manager_config\.yaml}' \
+  | sed 's/lokiStackGateway: true/lokiStackGateway: false/' > /tmp/controller_manager_config.yaml
+kubectl create configmap loki-operator-manager-config -n loki-operator \
+  --from-file=controller_manager_config.yaml=/tmp/controller_manager_config.yaml \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl rollout restart deployment/loki-operator-controller-manager -n loki-operator
+```
+
 If you'd rather avoid the kustomize/cert-manager route entirely, the
 operator is also published to
 [OperatorHub](https://operatorhub.io/operator/loki-operator) (package

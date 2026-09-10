@@ -94,11 +94,46 @@ const (
 	// unknownPhase is the Phase reported when the underlying LokiStack has no
 	// "Ready" condition yet.
 	unknownPhase = "Unknown"
+
+	// lokiFSGroup is the fixed non-root UID/GID (10001) baked into the Loki
+	// Operator's own grafana/loki container image (its Dockerfile sets
+	// "USER 10001"). The Loki Operator's generated StatefulSets never set
+	// spec.template.spec.securityContext.fsGroup themselves -- confirmed
+	// against its own operator/internal/manifests/securitycontext.go: even
+	// with the lokiStackWebhook/restrictedPodSecurityStandard feature gate
+	// on, that path only ever adds RunAsNonRoot/seccompProfile/dropped
+	// capabilities, never fsGroup. On storage backends that provision
+	// volumes owned by root (Cinder CSI, for one -- the common case outside
+	// OpenShift's own SCC-managed volume ownership), the ingester,
+	// compactor, and index-gateway containers then can't write to their own
+	// PersistentVolumeClaims ("mkdir /tmp/loki/...: permission denied",
+	// CrashLoopBackOff). ExtraResources below patches fsGroup directly onto
+	// those three StatefulSets to work around it.
+	//
+	// This is safe against the Loki Operator's own reconcile loop
+	// clobbering it back out: its mutatePodSpec (internal/manifests/
+	// mutate.go) only ever overwrites Affinity/Containers/InitContainers/
+	// NodeSelector/Tolerations/TopologySpreadConstraints/Volumes on the
+	// existing object -- it never touches SecurityContext, so a
+	// Server-Side-Apply field claim on fsGroup, once made, survives every
+	// future reconcile from the vendor controller.
+	lokiFSGroup = 10001
 )
 
 // GVK is the GroupVersionKind of the Loki Operator LokiStack this operator
 // manages.
 var GVK = schema.GroupVersionKind{Group: Group, Version: Version, Kind: Kind}
+
+// statefulSetGVK is the GroupVersionKind of the Loki Operator's own
+// generated per-component StatefulSets -- see ExtraResources.
+var statefulSetGVK = schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "StatefulSet"}
+
+// pvcBackedComponents are the LokiStack component name suffixes whose
+// StatefulSets the Loki Operator backs with their own PersistentVolumeClaim
+// -- and so the ones that need lokiFSGroup patched onto them. Ruler is
+// PVC-backed too, but this project never sets spec.rules, so the Loki
+// Operator never creates one.
+var pvcBackedComponents = []string{"ingester", "compactor", "index-gateway"}
 
 // Adapter drives a paas LokiInstance onto a same-named Loki Operator
 // LokiStack. It implements
@@ -123,6 +158,43 @@ func QueryServiceName(crName string) string { return crName + queryFrontendServi
 // distributor Service for a LokiInstance named crName -- the address log
 // shippers should push to.
 func WriteServiceName(crName string) string { return crName + distributorServiceSuffix }
+
+// ExtraResources patches spec.template.spec.securityContext.fsGroup =
+// lokiFSGroup onto each PVC-backed component's StatefulSet -- see
+// lokiFSGroup's doc comment for why. Every entry is PatchOnly: these
+// StatefulSets are created and owned by the Loki Operator itself, not by
+// this reconciler, and won't exist yet on the reconcile where the LokiStack
+// is first created -- GenericReconciler retries on later reconciles until
+// the Loki Operator has created them. Implements
+// reconciler.ExtraResourcesAdapter[paasv1alpha1.LokiInstance, *paasv1alpha1.LokiInstance].
+func (Adapter) ExtraResources(_ *paasv1alpha1.LokiInstance, targetName, namespace, _ string) []reconciler.ExtraResource {
+	extras := make([]reconciler.ExtraResource, 0, len(pvcBackedComponents))
+	for _, component := range pvcBackedComponents {
+		name := targetName + "-" + component
+
+		patch := &unstructured.Unstructured{}
+		patch.SetGroupVersionKind(statefulSetGVK)
+		patch.SetName(name)
+		patch.SetNamespace(namespace)
+		patch.Object["spec"] = map[string]any{
+			"template": map[string]any{
+				"spec": map[string]any{
+					"securityContext": map[string]any{
+						"fsGroup": int64(lokiFSGroup),
+					},
+				},
+			},
+		}
+
+		extras = append(extras, reconciler.ExtraResource{
+			GVK:       statefulSetGVK,
+			Name:      name,
+			Desired:   patch,
+			PatchOnly: true,
+		})
+	}
+	return extras
+}
 
 // BuildManifest builds the desired loki.grafana.com/v1 LokiStack object for
 // cr, ready to be applied via Server-Side Apply.

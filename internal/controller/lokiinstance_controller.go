@@ -41,6 +41,7 @@ const LokiInstanceControllerName = "lokiinstance"
 // +kubebuilder:rbac:groups=paas.example.com,resources=lokiinstances/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=paas.example.com,resources=lokiinstances/finalizers,verbs=update
 // +kubebuilder:rbac:groups=loki.grafana.com,resources=lokistacks,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;patch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 // NewLokiInstanceReconciler builds the LokiInstance controller.

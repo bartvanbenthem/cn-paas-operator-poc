@@ -104,6 +104,18 @@ type ExtraResource struct {
 	// Desired is the object to Server-Side-Apply, or nil to ensure the
 	// object (still identified by GVK/Name above) is absent.
 	Desired *unstructured.Unstructured
+	// PatchOnly marks an extra whose object is created and owned by a
+	// foreign controller (the primary target's own vendor operator), not by
+	// this reconciler -- Desired is Server-Side-Applied only to claim
+	// ownership of the specific fields it sets on that object (e.g. one
+	// field deep inside a Deployment/StatefulSet the vendor operator
+	// otherwise fully manages), never to create the object itself.
+	// GenericReconciler skips applying it until the target already exists
+	// (the vendor controller creates it, typically on a later reconcile),
+	// and never deletes it on the CR's own deletion -- the vendor
+	// controller's own owner reference on the object handles that once the
+	// primary target goes away.
+	PatchOnly bool
 }
 
 // ExtraResourcesAdapter is an optional Adapter extension for vendor
@@ -291,6 +303,17 @@ func (r *GenericReconciler[T, PT]) applyExtraResources(ctx context.Context, cr P
 	}
 	for _, extra := range er.ExtraResources(cr, targetName, cr.GetNamespace(), cr.GetName()) {
 		if extra.Desired != nil {
+			if extra.PatchOnly {
+				existing, err := GetTarget(ctx, r.Client, extra.GVK, cr.GetNamespace(), extra.Name)
+				if err != nil {
+					return err
+				}
+				if existing == nil {
+					// The vendor controller hasn't created its object yet --
+					// nothing to claim fields on until a later reconcile.
+					continue
+				}
+			}
 			if err := r.applyTarget(ctx, extra.Desired); err != nil {
 				return err
 			}
@@ -303,16 +326,22 @@ func (r *GenericReconciler[T, PT]) applyExtraResources(ctx context.Context, cr P
 	return nil
 }
 
-// deleteExtraResources unconditionally deletes every auxiliary object the
-// Adapter's ExtraResources reports for cr (if it implements
+// deleteExtraResources unconditionally deletes every non-PatchOnly auxiliary
+// object the Adapter's ExtraResources reports for cr (if it implements
 // ExtraResourcesAdapter), a no-op otherwise. Called on the CR's own deletion
-// path, mirroring deleteTarget's cleanup of the primary target.
+// path, mirroring deleteTarget's cleanup of the primary target. PatchOnly
+// extras are skipped -- this reconciler never owned the object itself, only
+// specific fields on it, and the vendor controller's own owner reference
+// handles its cleanup once the primary target is gone.
 func (r *GenericReconciler[T, PT]) deleteExtraResources(ctx context.Context, cr PT, targetName string) error {
 	er, ok := r.Adapter.(ExtraResourcesAdapter[T, PT])
 	if !ok {
 		return nil
 	}
 	for _, extra := range er.ExtraResources(cr, targetName, cr.GetNamespace(), cr.GetName()) {
+		if extra.PatchOnly {
+			continue
+		}
 		if err := r.deleteExtra(ctx, extra.GVK, cr.GetNamespace(), extra.Name); err != nil {
 			return err
 		}

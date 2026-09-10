@@ -71,6 +71,54 @@ func TestBuildManifest(t *testing.T) {
 	}
 }
 
+func TestExtraResources(t *testing.T) {
+	cr := &paasv1alpha1.LokiInstance{Spec: baseSpec()}
+	extras := Adapter{}.ExtraResources(cr, "mystack", "default", "mystack")
+
+	wantNames := map[string]bool{
+		"mystack-ingester":      false,
+		"mystack-compactor":     false,
+		"mystack-index-gateway": false,
+	}
+	if len(extras) != len(wantNames) {
+		t.Fatalf("expected %d extras, got %d", len(wantNames), len(extras))
+	}
+
+	for _, extra := range extras {
+		if _, ok := wantNames[extra.Name]; !ok {
+			t.Fatalf("unexpected extra resource name %q", extra.Name)
+		}
+		wantNames[extra.Name] = true
+
+		if extra.GVK != statefulSetGVK {
+			t.Fatalf("expected GVK %v, got %v", statefulSetGVK, extra.GVK)
+		}
+		if !extra.PatchOnly {
+			t.Fatalf("expected extra %q to be PatchOnly", extra.Name)
+		}
+		if extra.Desired == nil {
+			t.Fatalf("expected extra %q to have a non-nil Desired", extra.Name)
+		}
+		if extra.Desired.GetNamespace() != "default" {
+			t.Fatalf("expected namespace %q, got %q", "default", extra.Desired.GetNamespace())
+		}
+
+		fsGroup, found, _ := unstructured.NestedInt64(extra.Desired.Object, "spec", "template", "spec", "securityContext", "fsGroup")
+		if !found {
+			t.Fatalf("expected fsGroup set on extra %q", extra.Name)
+		}
+		if fsGroup != lokiFSGroup {
+			t.Fatalf("expected fsGroup %d, got %d", lokiFSGroup, fsGroup)
+		}
+	}
+
+	for name, seen := range wantNames {
+		if !seen {
+			t.Fatalf("expected an extra resource named %q", name)
+		}
+	}
+}
+
 func TestServiceNames(t *testing.T) {
 	if got, want := QueryServiceName("mystack"), "mystack-query-frontend-http"; got != want {
 		t.Fatalf("expected %q, got %q", want, got)

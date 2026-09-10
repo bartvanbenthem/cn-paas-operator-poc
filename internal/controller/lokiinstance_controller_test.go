@@ -21,6 +21,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -137,6 +139,62 @@ var _ = Describe("LokiInstance Controller", func() {
 			cond := meta.FindStatusCondition(withStatus.Status.Conditions, "Ready")
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+		})
+
+		It("should patch fsGroup onto the Loki Operator's own StatefulSets once they exist, and leave them alone on deletion", func() {
+			controllerReconciler := &LokiInstanceReconciler{
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: events.NewFakeRecorder(10),
+				Adapter:  loki.Adapter{},
+				Name:     LokiInstanceControllerName,
+			}
+
+			By("reconciling once to attach the finalizer, once more to apply the LokiStack")
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("simulating the Loki Operator having created the ingester StatefulSet, with no fsGroup set")
+			stsName := resourceName + "-ingester"
+			sts := &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{Name: stsName, Namespace: resourceNamespace},
+				Spec: appsv1.StatefulSetSpec{
+					ServiceName: stsName,
+					Selector:    &metav1.LabelSelector{MatchLabels: map[string]string{"app": stsName}},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": stsName}},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{Name: "loki", Image: "docker.io/grafana/loki:3.7.3"}},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, sts)).To(Succeed())
+			DeferCleanup(func() {
+				_ = k8sClient.Delete(ctx, sts)
+			})
+
+			By("reconciling again so ExtraResources patches fsGroup onto it")
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			var patched appsv1.StatefulSet
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: stsName, Namespace: resourceNamespace}, &patched)).To(Succeed())
+			Expect(patched.Spec.Template.Spec.SecurityContext).NotTo(BeNil())
+			Expect(patched.Spec.Template.Spec.SecurityContext.FSGroup).NotTo(BeNil())
+			Expect(*patched.Spec.Template.Spec.SecurityContext.FSGroup).To(Equal(int64(10001)))
+
+			By("deleting the LokiInstance and reconciling its deletion path")
+			var toDelete paasv1alpha1.LokiInstance
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &toDelete)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, &toDelete)).To(Succeed())
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying the StatefulSet itself was left alone -- it isn't owned by this reconciler")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: stsName, Namespace: resourceNamespace}, &appsv1.StatefulSet{})).To(Succeed())
 		})
 	})
 })
