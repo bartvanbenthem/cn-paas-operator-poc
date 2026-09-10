@@ -405,7 +405,25 @@ see its own section below.
 
 Install order doesn't matter between them (none depend on each other) — just
 make sure whichever ones you actually plan to create CRs for are up before
-applying `config/samples/` or your own CRs.
+applying `config/samples/` or your own CRs. The one ordering exception is
+cert-manager, a prerequisite for the Loki Operator below, so it's installed
+first.
+
+### cert-manager
+
+Install this first if you plan to use `LokiInstance` — the Loki Operator's
+`community` overlay further down needs cert-manager running before it's
+applied. None of this project's other dependencies need it.
+
+```sh
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+```
+
+Verify:
+
+```sh
+kubectl get pods -n cert-manager
+```
 
 ### CloudNativePG (for `PostgresCluster`)
 
@@ -643,20 +661,14 @@ kubectl create namespace loki-operator
 kubectl apply -k "https://github.com/grafana/loki/operator/config/overlays/community?ref=operator/v0.11.0"
 ```
 
-This needs [cert-manager](https://cert-manager.io) installed **first**: the
-overlay wires up a `ValidatingWebhookConfiguration` (covering `LokiStack`
-and the Loki Operator's other CRDs) backed by a cert-manager
-`Issuer`/`Certificate` for its TLS, and that webhook's `failurePolicy` is
-`Fail` — without cert-manager running, the `Certificate`/`Issuer` objects
-can't even be created (their CRDs won't exist), the webhook never gets a
-valid serving cert, and every `LokiStack` create/update is then rejected by
-the API server outright. None of this project's other dependencies need
-cert-manager; this one does.
-
-```sh
-# if cert-manager isn't already installed:
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
-```
+This needs [cert-manager](#cert-manager-prerequisite-for-the-loki-operator)
+installed **first**: the overlay wires up a `ValidatingWebhookConfiguration`
+(covering `LokiStack` and the Loki Operator's other CRDs) backed by a
+cert-manager `Issuer`/`Certificate` for its TLS, and that webhook's
+`failurePolicy` is `Fail` — without cert-manager running, the
+`Certificate`/`Issuer` objects can't even be created (their CRDs won't
+exist), the webhook never gets a valid serving cert, and every `LokiStack`
+create/update is then rejected by the API server outright.
 
 If you'd rather avoid the kustomize/cert-manager route entirely, the
 operator is also published to
