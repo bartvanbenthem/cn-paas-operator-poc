@@ -633,9 +633,13 @@ its kustomize layout doesn't follow the standard kubebuilder `config/default`
 convention every other operator here uses — it's split into
 `config/overlays/{community,community-openshift,development,openshift}`
 instead. `community` is the one for a plain (non-OpenShift) cluster, and it
-already points at the real, current release image:
+already points at the real, current release image. The overlay sets
+`namespace: loki-operator` on every resource but doesn't include a
+`Namespace` manifest of its own, so create it first or the apply fails with
+`namespaces "loki-operator" not found`:
 
 ```sh
+kubectl create namespace loki-operator
 kubectl apply -k "https://github.com/grafana/loki/operator/config/overlays/community?ref=operator/v0.11.0"
 ```
 
