@@ -687,6 +687,21 @@ kubectl patch certificate loki-operator-serving-cert -n loki-operator \
 cert-manager reissues into the new secret name within a few seconds and the
 pod's next mount attempt succeeds — no restart needed.
 
+The `community` overlay also ships a broken image reference: the
+manager-level `config/manager/kustomization.yaml` (a layer underneath
+`community`) hardcodes `quay.io/openshift-logging/loki-operator:0.1.0`,
+which doesn't exist on quay.io (`ImagePullBackOff` /
+`failed to resolve image`). This preempts the `community` overlay's own
+`images:` override to the real `docker.io/grafana/loki-operator:0.11.0`
+image — by the time that override's `name: controller` matcher runs, the
+image has already been renamed away from `controller`, so it silently
+no-ops. Point the Deployment at the working image directly:
+
+```sh
+kubectl set image deployment/loki-operator-controller-manager -n loki-operator \
+  manager=docker.io/grafana/loki-operator:0.11.0
+```
+
 If you'd rather avoid the kustomize/cert-manager route entirely, the
 operator is also published to
 [OperatorHub](https://operatorhub.io/operator/loki-operator) (package
