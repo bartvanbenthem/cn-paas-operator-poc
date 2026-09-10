@@ -252,8 +252,9 @@ container name) rather than as a simple top-level object, so it was left out
 of this first pass rather than guessing at the container name grafana-operator
 expects. Everything else in the generated vendor object (CNPG's backups,
 monitoring, affinity, pooling, superuser secret, etc.; Valkey's TLS, ACLs,
-exporter, pod disruption budget, etc.; Grafana's ingress/route, SMTP,
-plugins, jsonnet, service accounts, etc.; mariadb-operator's TLS,
+exporter, pod disruption budget, etc.; Grafana's route, SMTP,
+plugins, jsonnet, service accounts, etc. -- `ingress` itself *is* exposed,
+see `GrafanaInstanceSpec.Ingress`; mariadb-operator's TLS,
 replication (non-Galera), MaxScale, backups, etc.; the RabbitMQ Cluster
 Operator's TLS, plugins, definitions import, affinity, etc.; the Prometheus
 Operator's rule/scrape-config selectors, remote write, Alertmanager
@@ -755,6 +756,52 @@ kubectl create secret generic example-loki-s3 \
   --from-literal=access_key_id=<id> \
   --from-literal=access_key_secret=<secret>
 ```
+
+### Ingress controller (optional, for `spec.ingress`)
+
+`GrafanaInstance`, `RabbitMQCluster`, and `PrometheusInstance` all share the
+same `IngressSpec` (`spec.ingress.host`, optional `ingressClassName`,
+`tlsSecretName`, `annotations`) -- a real, standard
+`networking.k8s.io/v1 Ingress`, not a vendor-specific CRD or a Gateway API
+`HTTPRoute` (this project doesn't use the Gateway API anywhere). For Grafana
+it's applied directly as the underlying `Grafana`'s own `spec.ingress`
+(grafana-operator creates the `Ingress` object itself, wired to its own
+generated Service); for RabbitMQ/Prometheus, which have no native ingress
+field, `internal/ingress` builds and applies the `Ingress` object directly.
+See each type's own doc comment in `api/v1alpha1/` for details.
+
+An `Ingress` object is just routing intent, though -- nothing serves it
+without an ingress controller watching the cluster and an `IngressClass` for
+`ingressClassName` to select (or the cluster's default one, if
+`ingressClassName` is left unset). If none is installed yet,
+[HAProxy Ingress](https://github.com/haproxytech/kubernetes-ingress)
+(HAProxy Technologies' own controller -- any `networking.k8s.io/v1`-conformant
+controller works here, since `IngressSpec` builds a plain standard
+`Ingress`) is a solid choice:
+
+```sh
+helm upgrade --install haproxy-ingress kubernetes-ingress \
+  --repo https://haproxytech.github.io/helm-charts \
+  --version 1.54.0 -n haproxy-ingress --create-namespace \
+  --set controller.ingressClassResource.default=true
+```
+
+Verify:
+
+```sh
+kubectl get pods -n haproxy-ingress
+kubectl get ingressclass
+```
+
+The chart registers an `IngressClass` named `haproxy`; by default it does
+*not* mark it as the cluster's default (`--set
+controller.ingressClassResource.default=true` above turns that on), so
+`spec.ingress.ingressClassName` can be left unset -- without that flag,
+every `IngressSpec` needs `ingressClassName: haproxy` set explicitly, or its
+`Ingress` gets created but nothing serves it. On a cloud-managed cluster
+this chart also provisions a `LoadBalancer` Service fronting the controller
+-- check `kubectl get svc -n haproxy-ingress` for its external IP/hostname
+and point your `spec.ingress.host` DNS record at it.
 
 ### Once the dependency operators are up
 

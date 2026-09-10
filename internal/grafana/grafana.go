@@ -80,6 +80,20 @@ const (
 	// GrafanaDatasource this operator creates when GrafanaInstanceSpec.LokiRef
 	// is set, mirroring DatasourceUID.
 	LokiDatasourceUID = "loki"
+
+	// lokiOrgID is the X-Scope-OrgID header value every request to a
+	// LokiStack must carry. The Loki Operator's generated config always sets
+	// auth_enabled: true, regardless of whether its gateway (the component
+	// that would otherwise inject this header) is enabled -- and
+	// internal/loki deliberately leaves that gateway disabled, since wiring
+	// it up needs tenant/OIDC config out of scope for this project (see its
+	// package doc). Without the header, Loki rejects every request outright
+	// ("no org id"). "fake" is the conventional placeholder tenant used by
+	// every other single-tenant Loki setup in this same boat (Grafana's own
+	// Loki Helm chart docs recommend it for exactly this case) -- there's no
+	// real multi-tenancy here, so the value itself is arbitrary as long as
+	// every request uses the same one.
+	lokiOrgID = "fake"
 )
 
 // GVK is the GroupVersionKind of the grafana-operator Grafana this operator
@@ -252,6 +266,12 @@ func (Adapter) ExtraResources(cr *paasv1alpha1.GrafanaInstance, targetName, name
 			"type":   "loki",
 			"access": "proxy",
 			"url":    lokiURL,
+			"jsonData": map[string]any{
+				"httpHeaderName1": "X-Scope-OrgID",
+			},
+			"secureJsonData": map[string]any{
+				"httpHeaderValue1": lokiOrgID,
+			},
 		},
 	}
 

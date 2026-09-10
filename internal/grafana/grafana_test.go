@@ -156,5 +156,15 @@ func TestExtraResourcesDatasource(t *testing.T) {
 		if uid != LokiDatasourceUID {
 			t.Fatalf("expected uid %q, got %q", LokiDatasourceUID, uid)
 		}
+
+		headerName, _, _ := unstructured.NestedString(lokiDS.Desired.Object, "spec", "datasource", "jsonData", "httpHeaderName1")
+		if headerName != "X-Scope-OrgID" {
+			t.Fatalf("expected httpHeaderName1 %q, got %q", "X-Scope-OrgID", headerName)
+		}
+
+		headerValue, _, _ := unstructured.NestedString(lokiDS.Desired.Object, "spec", "datasource", "secureJsonData", "httpHeaderValue1")
+		if headerValue != lokiOrgID {
+			t.Fatalf("expected httpHeaderValue1 %q, got %q", lokiOrgID, headerValue)
+		}
 	})
 }
