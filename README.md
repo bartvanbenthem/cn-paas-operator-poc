@@ -134,45 +134,54 @@ type means writing the adapter, not another copy of the reconcile loop.
 - `internal/cnpg/cnpg.go`, `internal/valkey/valkey.go`,
   `internal/grafana/grafana.go`, `internal/mariadb/mariadb.go`,
   `internal/rabbitmq/rabbitmq.go`, `internal/prometheus/prometheus.go`,
-  `internal/psmdb/psmdb.go`, `internal/strimzi/strimzi.go`, and
-  `internal/loki/loki.go` — one `Adapter` implementation per vendor object:
-  the target `GroupVersionKind`, how to build the desired vendor object from
-  our CR's spec, and how to read phase/readiness back out of its status.
-  None of the vendors' Go API types or CRD schemas are vendored — we don't
-  own those CRDs, and their schemas are large and version-specific (see
-  `crd-cnpg-v1.30.0.yaml`, `crd-valkey-v0.6.0.yaml`,
-  `crd-grafana-v5.25.0.yaml`, `crd-mariadb-operator-v26.6.0.yaml`,
+  `internal/psmdb/psmdb.go`, `internal/strimzi/strimzi.go`,
+  `internal/loki/loki.go`, and `internal/alloy/alloy.go` — one `Adapter`
+  implementation per vendor object: the target `GroupVersionKind`, how to
+  build the desired vendor object from our CR's spec, and how to read
+  phase/readiness back out of its status. None of the vendors' Go API types
+  or CRD schemas are vendored — we don't own those CRDs, and their schemas
+  are large and version-specific (see `crd-cnpg-v1.30.0.yaml`,
+  `crd-valkey-v0.6.0.yaml`, `crd-grafana-v5.25.0.yaml`,
+  `crd-mariadb-operator-v26.6.0.yaml`,
   `crd-rabbitmq-cluster-operator-v2.22.5.yaml`,
   `crd-prometheus-operator-v0.93.1.yaml`,
   `crd-percona-server-mongodb-operator-v1.23.0.yaml`,
-  `crd-strimzi-kafka-operator-v1.2.0.yaml`, and
-  `crd-loki-operator-v0.11.0.yaml`, all under `external-crds/`).
-  Instead the target is addressed purely through controller-runtime's
-  dynamic client (`unstructured.Unstructured` + a `schema.GroupVersionKind`),
-  and the desired object is built as a plain `map[string]any` applied via
+  `crd-strimzi-kafka-operator-v1.2.0.yaml`, `crd-loki-operator-v0.11.0.yaml`,
+  and `crd-alloy-operator-v0.7.1.yaml`, all under `external-crds/`). Instead
+  the target is addressed purely through controller-runtime's dynamic client
+  (`unstructured.Unstructured` + a `schema.GroupVersionKind`), and the
+  desired object is built as a plain `map[string]any` applied via
   Server-Side Apply (`client.Patch(ctx, obj, client.Apply, ...)`). This keeps
-  the operator decoupled from any one vendor version.
+  the operator decoupled from any one vendor version. `internal/alloy` is a
+  special case worth knowing about before touching it: the Alloy Operator's
+  own `Alloy.spec`/`.status` carry no structured OpenAPI schema at all (see
+  its package doc) — it's an Operator SDK Helm-based operator, so `spec` is
+  really the `grafana/alloy` Helm chart's own values schema passed straight
+  through, and `.status` is generic Helm-release conditions, not anything
+  Alloy-specific.
 - `api/v1alpha1/postgrescluster_types.go` / `valkeycluster_types.go` /
   `grafanainstance_types.go` / `mariadbcluster_types.go` /
   `rabbitmqcluster_types.go` / `prometheusinstance_types.go` /
   `mongodbcluster_types.go` / `kafkacluster_types.go` /
-  `lokiinstance_types.go` — our own CRDs, scaffolded and generated the
-  normal kubebuilder way (`+kubebuilder:validation`/`+kubebuilder:printcolumn`
-  markers, `controller-gen` for the CRD YAML and deepcopy code).
+  `lokiinstance_types.go` / `alloyinstance_types.go` — our own CRDs,
+  scaffolded and generated the normal kubebuilder way
+  (`+kubebuilder:validation`/`+kubebuilder:printcolumn` markers,
+  `controller-gen` for the CRD YAML and deepcopy code).
 - `internal/controller/postgrescluster_controller.go` /
   `valkeycluster_controller.go` / `grafanainstance_controller.go` /
   `mariadbcluster_controller.go` / `rabbitmqcluster_controller.go` /
   `prometheusinstance_controller.go` / `mongodbcluster_controller.go` /
-  `kafkacluster_controller.go` / `lokiinstance_controller.go` — a few lines
-  each: they just instantiate `GenericReconciler` with the matching adapter
-  (`cnpg.Adapter{}` / `valkey.Adapter{}` / `grafana.Adapter{}` /
-  `mariadb.Adapter{}` / `rabbitmq.Adapter{}` / `prometheus.Adapter{}` /
-  `psmdb.Adapter{}` / `strimzi.Adapter{}` / `loki.Adapter{}`) and register it
+  `kafkacluster_controller.go` / `lokiinstance_controller.go` /
+  `alloyinstance_controller.go` — a few lines each: they just instantiate
+  `GenericReconciler` with the matching adapter (`cnpg.Adapter{}` /
+  `valkey.Adapter{}` / `grafana.Adapter{}` / `mariadb.Adapter{}` /
+  `rabbitmq.Adapter{}` / `prometheus.Adapter{}` / `psmdb.Adapter{}` /
+  `strimzi.Adapter{}` / `loki.Adapter{}` / `alloy.Adapter{}`) and register it
   with the manager. RBAC markers for both our own CRD and the vendor's live
   here.
-- One paas CR maps to exactly one same-named vendor object (`KafkaCluster` is
+- One paas CR maps to exactly one same-named target object (`KafkaCluster` is
   the one exception with two: see its own note in Scope below). On delete,
-  the operator removes the vendor object before releasing its own finalizer,
+  the operator removes the target object before releasing its own finalizer,
   so e.g. `kubectl delete postgrescluster` also tears down the database.
 - Status is refreshed by polling (15s while not ready, 5m once ready) rather
   than a push watch: `unstructured.Unstructured` isn't registered with the
@@ -185,10 +194,14 @@ type means writing the adapter, not another copy of the reconcile loop.
   `monitoring.coreos.com_prometheuses.yaml`,
   `psmdb.percona.com_perconaservermongodbs.yaml`,
   `kafka.strimzi.io_kafkas.yaml` / `kafka.strimzi.io_kafkanodepools.yaml`,
-  and `loki.grafana.com_lokistacks.yaml` are (trimmed copies of, for the
-  last three) the real vendor CRDs, loaded into `envtest` so the controller
-  tests validate the generated objects against each vendor's actual OpenAPI
-  schema — not just against our own assumptions about its shape.
+  `loki.grafana.com_lokistacks.yaml`, and
+  `collectors.grafana.com_alloys.yaml` are (trimmed copies of, for the
+  middle three) the real vendor CRDs, loaded into `envtest` so the
+  controller tests validate the generated objects against each vendor's
+  actual OpenAPI schema — not just against our own assumptions about its
+  shape (`collectors.grafana.com_alloys.yaml` is the one exception: it's
+  copied in full, not trimmed, since the real CRD is already only ~30 lines —
+  see `internal/alloy`'s package doc for why).
 
 ### Adding another vendor integration
 
@@ -240,7 +253,8 @@ ClusterIP Service fronting it); `MongoDBCluster` exposes `replicas`, `image`,
 `replicas`, `version`, `storage.size`, `storage.storageClass`, optional
 `resources`, optional `monitoring.enablePodMonitor`, and optional `expose`;
 `LokiInstance` exposes `size`, `storageClassName`, and
-`objectStorage.secretName`. `GrafanaInstance` additionally exposes an
+`objectStorage.secretName`; `AlloyInstance` exposes `lokiInstanceRef` and
+`replicas`. `GrafanaInstance` additionally exposes an
 optional `lokiRef`, mirroring its required `prometheusRef`: when set,
 `internal/grafana` creates a second GrafanaDatasource wiring the Grafana to
 the named `LokiInstance`, the same way `prometheusRef` wires it to a
@@ -310,6 +324,28 @@ just field count:
   so readiness is derived purely from its `Ready` condition. Only
   S3-compatible object storage is supported (see `LokiInstanceSpec`'s doc
   comment) — GCS/Azure/Swift/AlibabaCloud are out of scope.
+- `AlloyInstance` diverges in a different way: the Alloy Operator is
+  Operator SDK's Helm plugin wrapping the real `grafana/alloy` Helm chart
+  (see `internal/alloy`'s package doc), so its `Alloy.spec` is that chart's
+  own values schema, not a hand-designed CRD API. This operator only ever
+  sets three things on it: the generated Alloy config
+  (`spec.alloy.configMap.content`), the controller shape
+  (`spec.controller.type: deployment`, sized by `spec.replicas` — not the
+  chart's own DaemonSet default, since the generated config reads pod logs
+  through the Kubernetes API via `loki.source.kubernetes` rather than
+  tailing local node log files, so one or a few replicas cover a namespace
+  regardless of node count), and `spec.rbac.namespaces: [<namespace>]`
+  (restricting the chart's own ServiceAccount/Role/RoleBinding it creates to
+  a namespace-scoped `Role`, never the chart's default `ClusterRole`) —
+  deliberate, since this operator pairs one `AlloyInstance` with one
+  `LokiInstance` per tenant namespace, and a cluster-wide Alloy would let
+  one tenant's log shipper read every other tenant's pod logs too.
+  `AlloyInstanceStatus` also has no replica-count field, the same as
+  `LokiInstanceStatus` and `KafkaClusterStatus` — the Alloy Operator's own
+  `.status` reports generic Helm-release conditions
+  (`Initialized`/`Deployed`/`ReleaseFailed`/`Irreconcilable`/`Paused`), never
+  anything about the underlying Deployment's actual rollout, so readiness is
+  derived purely from its `Deployed` condition.
 
 Notes on what's deliberately out of scope:
 - valkey-operator also defines a `ValkeyNode` CRD, but it's explicitly
@@ -356,16 +392,20 @@ deepcopy code via `controller-gen`), `make lint` (golangci-lint, 0 issues),
 and `make test` (a real `envtest` API server, with our CRDs and CNPG's,
 valkey-operator's, grafana-operator's, mariadb-operator's, the RabbitMQ
 Cluster Operator's, the Prometheus Operator's, the Percona Server for
-MongoDB Operator's, the Strimzi Kafka Operator's, and the Loki Operator's
-actual (trimmed, for the last three) CRDs all loaded — see above) all pass;
-all nine controller tests exercise finalizer-add, Server-Side Apply of the
-generated vendor object(s), and the status-mirroring logic end to end
-(`KafkaCluster`'s two tests also assert the `KafkaNodePool` extra is always
-present regardless of the monitoring toggle). Not run: anything against a
+MongoDB Operator's, the Strimzi Kafka Operator's, the Loki Operator's, and
+the Alloy Operator's actual (trimmed, for four of them) CRDs all loaded —
+see above) all pass; all ten controller tests exercise finalizer-add,
+Server-Side Apply of the generated target object(s), and the
+status-mirroring logic end to end (`KafkaCluster`'s two tests also assert
+the `KafkaNodePool` extra is always present regardless of the monitoring
+toggle; `AlloyInstance`'s asserts the generated `Alloy`'s
+`spec.controller`/`spec.rbac.namespaces`/`spec.alloy.configMap.content` are
+all wired to the referenced `LokiInstance`). Not run: anything against a
 live cluster with CNPG, valkey-operator, grafana-operator, mariadb-operator,
 the RabbitMQ Cluster Operator, the Prometheus Operator, the Percona Server
-for MongoDB Operator, the Strimzi Kafka Operator, or the Loki Operator
-actually installed and reconciling — do that before trusting this in
+for MongoDB Operator, the Strimzi Kafka Operator, the Loki Operator, or the
+Alloy Operator actually installed and reconciling — do that before trusting
+this in
 anything real (the Grafana mapping in particular is untested against a live
 grafana-operator: the `deployment.spec.replicas` and
 `persistentVolumeClaim` paths are correct per its CRD schema, but its
@@ -384,7 +424,19 @@ matches what `internal/loki`'s doc comment assumes, that `Ready` actually
 flips true for a real bucket, and that Grafana's auto-wired Loki datasource
 can actually reach the query-frontend Service and return real query
 results, since the gatewayless single-tenant request path it relies on has
-not been exercised against a live Loki Operator).
+not been exercised against a live Loki Operator). For `AlloyInstance`
+specifically: `Alloy.spec`'s shape was confirmed against the `grafana/alloy`
+Helm chart's own `values.yaml` (chart 1.12.1, the version Alloy Operator
+v0.7.1 embeds) and the Alloy Operator's own example manifest, and the
+generated Alloy-syntax config was checked by hand against Grafana's own
+`discovery.kubernetes`/`loki.source.kubernetes`/`loki.write` component
+reference docs — but no `AlloyInstance` has actually been reconciled against
+a live Alloy Operator with a real Alloy process parsing that config and
+pushing real logs. Double-check the underlying `Deployed` condition actually
+flips true (a config syntax error fails Alloy's own startup validation
+inside the pod, which the Helm release itself may still report as
+successfully installed), and that labeled log lines actually land in the
+target `LokiInstance`, before relying on this.
 
 ## Installing the Dependency Operators
 
@@ -393,10 +445,10 @@ valkey-operator's `ValkeyCluster`, grafana-operator's `Grafana`,
 mariadb-operator's `MariaDB`, the RabbitMQ Cluster Operator's
 `RabbitmqCluster`, the Prometheus Operator's `Prometheus`, the Percona
 Server for MongoDB Operator's `PerconaServerMongoDB`, the Strimzi Kafka
-Operator's `Kafka`/`KafkaNodePool`, and the Loki Operator's `LokiStack`) via
-Server-Side Apply — it never installs the vendor operators themselves. Each
-one has to be running in the cluster *before*
-paas-operator can reconcile anything, otherwise `BuildManifest`'s
+Operator's `Kafka`/`KafkaNodePool`, the Loki Operator's `LokiStack`, and the
+Alloy Operator's `Alloy`) via Server-Side Apply — it never installs the
+vendor operators themselves. Each one has to be running in the cluster
+*before* paas-operator can reconcile anything, otherwise `BuildManifest`'s
 Server-Side Apply calls fail because the target CRD doesn't exist yet. Most
 ship a Helm chart; the RabbitMQ Cluster Operator ships a plain manifest
 instead (its own recommended install path). That's the preferred route for
@@ -756,6 +808,44 @@ kubectl create secret generic example-loki-s3 \
   --from-literal=access_key_id=<id> \
   --from-literal=access_key_secret=<secret>
 ```
+
+### Alloy Operator (for `AlloyInstance`)
+
+```sh
+helm upgrade -i alloy-operator alloy-operator \
+  --repo https://grafana.github.io/helm-charts \
+  --version 0.7.1 -n alloy-operator-system --create-namespace
+```
+
+Verify:
+
+```sh
+kubectl get pods -n alloy-operator-system
+kubectl get crd alloys.collectors.grafana.com
+```
+
+`external-crds/crd-alloy-operator-v0.7.1.yaml` is the CRD this operator was
+built and tested against, matching Alloy Operator `v0.7.1` (which embeds
+Alloy `v1.19.2`) — if you install a different version, double-check
+`internal/alloy`'s field paths (`spec.alloy.configMap.content`,
+`spec.controller.type`/`spec.controller.replicas`, `spec.rbac.namespaces`)
+still match the `grafana/alloy` Helm chart values schema that version
+embeds.
+
+Then, once a `LokiInstance` exists for it to point at (see `Scope` above):
+
+```sh
+kubectl apply -f config/samples/paas_v1alpha1_lokiinstance.yaml
+kubectl apply -f config/samples/paas_v1alpha1_alloyinstance.yaml
+kubectl get alloyinstance example-alloy
+```
+
+If the cluster already runs its own Alloy or Promtail for some other,
+unrelated purpose (a platform-wide log pipeline shipping to a hosted Loki
+outside this cluster, say), this is independent of it: each `AlloyInstance`
+only ever reads pods in its own namespace (`spec.rbac.namespaces`) and only
+ever pushes to its own `spec.lokiInstanceRef`'s distributor, so the two
+never collide or double-ship the same logs to the same place.
 
 ### Ingress controller (optional, for `spec.ingress`)
 

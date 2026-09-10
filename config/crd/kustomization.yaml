@@ -11,6 +11,7 @@ resources:
 - bases/paas.example.com_mongodbclusters.yaml
 - bases/paas.example.com_kafkaclusters.yaml
 - bases/paas.example.com_lokiinstances.yaml
+- bases/paas.example.com_alloyinstances.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

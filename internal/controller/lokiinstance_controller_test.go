@@ -41,6 +41,13 @@ var _ = Describe("LokiInstance Controller", func() {
 		const (
 			resourceName      = "test-loki"
 			resourceNamespace = "default"
+
+			// testLokiImage/testLokiContainerName are the container image and
+			// name used by every simulated Loki Operator StatefulSet/Pod
+			// fixture below -- irrelevant to what's under test (no real
+			// image is ever pulled in envtest), just need to be present.
+			testLokiImage         = "docker.io/grafana/loki:3.7.3"
+			testLokiContainerName = "loki"
 		)
 
 		ctx := context.Background()
@@ -162,11 +169,11 @@ var _ = Describe("LokiInstance Controller", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: stsName, Namespace: resourceNamespace},
 				Spec: appsv1.StatefulSetSpec{
 					ServiceName: stsName,
-					Selector:    &metav1.LabelSelector{MatchLabels: map[string]string{"app": stsName}},
+					Selector:    &metav1.LabelSelector{MatchLabels: map[string]string{testDBName: stsName}},
 					Template: corev1.PodTemplateSpec{
-						ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": stsName}},
+						ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{testDBName: stsName}},
 						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{{Name: "loki", Image: "docker.io/grafana/loki:3.7.3"}},
+							Containers: []corev1.Container{{Name: testLokiContainerName, Image: testLokiImage}},
 						},
 					},
 				},
@@ -218,11 +225,11 @@ var _ = Describe("LokiInstance Controller", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: stsName, Namespace: resourceNamespace},
 				Spec: appsv1.StatefulSetSpec{
 					ServiceName: stsName,
-					Selector:    &metav1.LabelSelector{MatchLabels: map[string]string{"app": stsName}},
+					Selector:    &metav1.LabelSelector{MatchLabels: map[string]string{testDBName: stsName}},
 					Template: corev1.PodTemplateSpec{
-						ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": stsName}},
+						ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{testDBName: stsName}},
 						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{{Name: "loki", Image: "docker.io/grafana/loki:3.7.3"}},
+							Containers: []corev1.Container{{Name: testLokiContainerName, Image: testLokiImage}},
 						},
 					},
 				},
@@ -237,10 +244,10 @@ var _ = Describe("LokiInstance Controller", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      stsName + "-0",
 					Namespace: resourceNamespace,
-					Labels:    map[string]string{"app": stsName, "controller-revision-hash": "old-rev"},
+					Labels:    map[string]string{testDBName: stsName, "controller-revision-hash": "old-rev"},
 				},
 				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{{Name: "loki", Image: "docker.io/grafana/loki:3.7.3"}},
+					Containers: []corev1.Container{{Name: testLokiContainerName, Image: testLokiImage}},
 				},
 			}
 			Expect(k8sClient.Create(ctx, pod)).To(Succeed())

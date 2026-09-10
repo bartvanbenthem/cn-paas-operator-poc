@@ -1,0 +1,15 @@
+apiVersion: paas.example.com/v1alpha1
+kind: AlloyInstance
+metadata:
+  labels:
+    app.kubernetes.io/name: paas-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: example-alloy
+spec:
+  # lokiInstanceRef must name a LokiInstance already existing in this same
+  # namespace -- see paas_v1alpha1_lokiinstance.yaml. Its distributor
+  # endpoint, RBAC, and Alloy config are all wired up automatically; nothing
+  # else needs configuring to start seeing labeled logs (namespace, pod,
+  # container, node) for every pod in this namespace.
+  lokiInstanceRef: example-loki
+  replicas: 1

@@ -36,6 +36,18 @@ rules:
   - patch
   - watch
 - apiGroups:
+  - collectors.grafana.com
+  resources:
+  - alloys
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - events.k8s.io
   resources:
   - events
@@ -122,6 +134,7 @@ rules:
 - apiGroups:
   - paas.example.com
   resources:
+  - alloyinstances
   - grafanainstances
   - kafkaclusters
   - lokiinstances
@@ -142,6 +155,7 @@ rules:
 - apiGroups:
   - paas.example.com
   resources:
+  - alloyinstances/finalizers
   - grafanainstances/finalizers
   - kafkaclusters/finalizers
   - lokiinstances/finalizers
@@ -156,6 +170,7 @@ rules:
 - apiGroups:
   - paas.example.com
   resources:
+  - alloyinstances/status
   - grafanainstances/status
   - kafkaclusters/status
   - lokiinstances/status
