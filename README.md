@@ -865,9 +865,12 @@ same `IngressSpec` (`spec.ingress.host`, optional `ingressClassName`,
 `networking.k8s.io/v1 Ingress`, not a vendor-specific CRD or a Gateway API
 `HTTPRoute` (this project doesn't use the Gateway API anywhere). For Grafana
 it's applied directly as the underlying `Grafana`'s own `spec.ingress`
-(grafana-operator creates the `Ingress` object itself, wired to its own
-generated Service); for RabbitMQ/Prometheus, which have no native ingress
-field, `internal/ingress` builds and applies the `Ingress` object directly.
+(grafana-operator creates and owns the resulting `Ingress` object itself,
+but mirrors `Grafana.spec.ingress.spec` onto it verbatim -- it does *not*
+fill in the backend automatically, so `internal/grafana`'s `BuildManifest`
+routes the rule at grafana-operator's own generated Service itself, the
+same way `internal/ingress` does explicitly for RabbitMQ/Prometheus, which
+have no native ingress field of their own at all).
 See each type's own doc comment in `api/v1alpha1/` for details.
 
 An `Ingress` object is just routing intent, though -- nothing serves it
@@ -911,18 +914,27 @@ kubectl get svc -n haproxy-ingress   # EXTERNAL-IP is the address every spec.ing
 The chart registers an `IngressClass` named `haproxy`; by default it does
 *not* mark it as the cluster's default (`--set
 controller.ingressClassResource.default=true` above turns that on).
-Regardless, set `spec.ingress.ingressClassName: haproxy` explicitly on
-every `IngressSpec` rather than relying on the cluster's default
-`IngressClass` to cover it: Kubernetes' `DefaultIngressClass` admission
-plugin only backfills an unset `ingressClassName` on the object's initial
-`Create`, never on a later `Update` -- fine for `RabbitMQCluster`/
-`PrometheusInstance` (this operator creates their `Ingress` once, directly),
-but `GrafanaInstance`'s is created and subsequently updated by
-grafana-operator itself, and an update that leaves `ingressClassName` unset
-does *not* get the default backfilled the way the original create would
-have -- the class can end up silently empty (`kubectl get ingress` showing
-`CLASS: <none>`) even with a default `IngressClass` configured correctly.
-Setting the field explicitly sidesteps that timing dependency entirely.
+
+Leaving `spec.ingress.ingressClassName` unset is safe to do -- you don't
+need to set it explicitly. Kubernetes' own `DefaultIngressClass` admission
+plugin backfills an unset `ingressClassName` from the cluster's default
+`IngressClass`, but only on an object's initial `Create`, never on a later
+`Update`; that's fine for `RabbitMQCluster`/`PrometheusInstance` (this
+operator creates their `Ingress` once, directly), but not for
+`GrafanaInstance`'s, which grafana-operator creates and then immediately
+updates on every reconcile -- an update built from
+`Grafana.spec.ingress.spec`, which never had a class for admission to have
+filled in, wiping out whatever the original create picked up. Left to that
+admission plugin alone, `GrafanaInstance`'s class can end up silently empty
+(`kubectl get ingress` showing `CLASS: <none>`) even with a default
+`IngressClass` configured correctly. Instead, `GenericReconciler` resolves
+the cluster's default `IngressClass` itself and sets it explicitly on every
+`IngressSpec`-driven CR (`GrafanaInstance`/`PrometheusInstance`/
+`RabbitMQCluster` alike) whenever left unset, redone on every reconcile so
+it self-heals regardless of a vendor controller's own create/update timing
+-- see `reconciler.IngressClassDefaultingAdapter`. Set
+`ingressClassName` explicitly only if you actually want a *different* class
+than the cluster's default.
 
 ### Once the dependency operators are up
 

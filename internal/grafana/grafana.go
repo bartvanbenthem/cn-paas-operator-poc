@@ -94,7 +94,25 @@ const (
 	// real multi-tenancy here, so the value itself is arbitrary as long as
 	// every request uses the same one.
 	lokiOrgID = "fake"
+
+	// webServiceSuffix and WebPort name/describe grafana-operator's own
+	// generated Service fronting Grafana's web UI -- a fixed convention
+	// (confirmed directly against a live Grafana: a Service named
+	// "<Grafana-name>-service", port 3000 named "grafana"), not documented
+	// in the CRD schema itself since it's the vendor controller's own
+	// runtime behavior. BuildManifest's own generated Ingress rule needs
+	// this to route anywhere at all -- grafana-operator does not fill in
+	// spec.ingress.spec.rules[].http.paths itself; it mirrors
+	// Grafana.spec.ingress.spec onto the real Ingress verbatim, backend
+	// included, exactly like internal/ingress.Build does for
+	// RabbitMQCluster/PrometheusInstance.
+	webServiceSuffix = "-service"
+	WebPort          = 3000
 )
+
+// ServiceName returns the name of grafana-operator's own generated Service
+// fronting the Grafana generated for crName.
+func ServiceName(crName string) string { return Adapter{}.TargetName(crName) + webServiceSuffix }
 
 // GVK is the GroupVersionKind of the grafana-operator Grafana this operator
 // manages.
@@ -129,6 +147,21 @@ func (Adapter) TargetName(crName string) string { return crName }
 func (Adapter) ObjectKind() string   { return "Grafana" }
 func (Adapter) FieldManager() string { return FieldManager }
 
+// RequestedIngressClassName and SetIngressClassName implement
+// reconciler.IngressClassDefaultingAdapter -- see its doc comment for why
+// GrafanaInstance specifically needs this rather than relying on
+// Kubernetes' own DefaultIngressClass admission plugin.
+func (Adapter) RequestedIngressClassName(cr *paasv1alpha1.GrafanaInstance) (string, bool) {
+	if cr.Spec.Ingress == nil {
+		return "", false
+	}
+	return cr.Spec.Ingress.IngressClassName, true
+}
+
+func (Adapter) SetIngressClassName(cr *paasv1alpha1.GrafanaInstance, className string) {
+	cr.Spec.Ingress.IngressClassName = className
+}
+
 // BuildManifest builds the desired grafana.integreatly.org/v1beta1 Grafana
 // object for cr, ready to be applied via Server-Side Apply.
 func (Adapter) BuildManifest(cr *paasv1alpha1.GrafanaInstance, name, namespace, ownerName string) *unstructured.Unstructured {
@@ -152,7 +185,23 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.GrafanaInstance, name, namespace, 
 		ingress := spec.Ingress
 		ingressSpec := map[string]any{
 			"rules": []any{
-				map[string]any{"host": ingress.Host},
+				map[string]any{
+					"host": ingress.Host,
+					"http": map[string]any{
+						"paths": []any{
+							map[string]any{
+								"path":     "/",
+								"pathType": "Prefix",
+								"backend": map[string]any{
+									"service": map[string]any{
+										"name": ServiceName(name),
+										"port": map[string]any{"number": int64(WebPort)},
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 		}
 		if ingress.IngressClassName != "" {

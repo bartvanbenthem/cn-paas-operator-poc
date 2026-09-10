@@ -143,6 +143,40 @@ func TestExtraResourcesIngress(t *testing.T) {
 	})
 }
 
+func TestRequestedIngressClassName(t *testing.T) {
+	t.Run("unset Ingress reports not requested", func(t *testing.T) {
+		cr := &paasv1alpha1.PrometheusInstance{}
+		class, requested := Adapter{}.RequestedIngressClassName(cr)
+		if requested || class != "" {
+			t.Fatalf("expected (\"\", false), got (%q, %v)", class, requested)
+		}
+	})
+
+	t.Run("Ingress set with an unset class reports requested with an empty class", func(t *testing.T) {
+		cr := &paasv1alpha1.PrometheusInstance{Spec: paasv1alpha1.PrometheusInstanceSpec{
+			Ingress: &paasv1alpha1.IngressSpec{Host: "prometheus.example.com"},
+		}}
+		class, requested := Adapter{}.RequestedIngressClassName(cr)
+		if !requested || class != "" {
+			t.Fatalf("expected (\"\", true), got (%q, %v)", class, requested)
+		}
+	})
+
+	t.Run("SetIngressClassName sets it in place for ExtraResources to pick up", func(t *testing.T) {
+		cr := &paasv1alpha1.PrometheusInstance{Spec: paasv1alpha1.PrometheusInstanceSpec{
+			Replicas: 1,
+			Ingress:  &paasv1alpha1.IngressSpec{Host: "prometheus.example.com"},
+		}}
+		Adapter{}.SetIngressClassName(cr, "haproxy")
+
+		extras := Adapter{}.ExtraResources(cr, testName, "default", testName)
+		class, _, _ := unstructured.NestedString(extras[1].Desired.Object, "spec", "ingressClassName")
+		if class != "haproxy" {
+			t.Fatalf("expected ingressClassName haproxy, got %q", class)
+		}
+	})
+}
+
 func TestExtraResourcesExpose(t *testing.T) {
 	t.Run("unset leaves the Service type ClusterIP", func(t *testing.T) {
 		cr := &paasv1alpha1.PrometheusInstance{Spec: paasv1alpha1.PrometheusInstanceSpec{Replicas: 1}}

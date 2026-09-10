@@ -76,6 +76,52 @@ func TestBuildManifestIngress(t *testing.T) {
 		if ann != "letsencrypt" {
 			t.Fatalf("expected annotation to be copied through, got %q", ann)
 		}
+
+		paths, found, _ := unstructured.NestedSlice(rule, "http", "paths")
+		if !found || len(paths) != 1 {
+			t.Fatalf("expected exactly one http path routing the rule at Grafana's own generated Service, found=%v len=%d", found, len(paths))
+		}
+		path, _ := paths[0].(map[string]any)
+		backendName, _, _ := unstructured.NestedString(path, "backend", "service", "name")
+		backendPort, _, _ := unstructured.NestedInt64(path, "backend", "service", "port", "number")
+		if backendName != "test-service" {
+			t.Fatalf("expected Ingress backend service name test-service, got %q", backendName)
+		}
+		if backendPort != WebPort {
+			t.Fatalf("expected Ingress backend port %d, got %d", WebPort, backendPort)
+		}
+	})
+}
+
+func TestRequestedIngressClassName(t *testing.T) {
+	t.Run("unset Ingress reports not requested", func(t *testing.T) {
+		cr := &paasv1alpha1.GrafanaInstance{}
+		class, requested := Adapter{}.RequestedIngressClassName(cr)
+		if requested || class != "" {
+			t.Fatalf("expected (\"\", false), got (%q, %v)", class, requested)
+		}
+	})
+
+	t.Run("Ingress set with an unset class reports requested with an empty class", func(t *testing.T) {
+		cr := &paasv1alpha1.GrafanaInstance{Spec: paasv1alpha1.GrafanaInstanceSpec{
+			Ingress: &paasv1alpha1.IngressSpec{Host: "grafana.example.com"},
+		}}
+		class, requested := Adapter{}.RequestedIngressClassName(cr)
+		if !requested || class != "" {
+			t.Fatalf("expected (\"\", true), got (%q, %v)", class, requested)
+		}
+	})
+
+	t.Run("SetIngressClassName sets it in place for BuildManifest to pick up", func(t *testing.T) {
+		cr := &paasv1alpha1.GrafanaInstance{Spec: paasv1alpha1.GrafanaInstanceSpec{
+			Ingress: &paasv1alpha1.IngressSpec{Host: "grafana.example.com"},
+		}}
+		Adapter{}.SetIngressClassName(cr, "haproxy")
+
+		class, _, _ := unstructured.NestedString(Adapter{}.BuildManifest(cr, "test", "default", "test").Object, "spec", "ingress", "spec", "ingressClassName")
+		if class != "haproxy" {
+			t.Fatalf("expected ingressClassName haproxy, got %q", class)
+		}
 	})
 }
 

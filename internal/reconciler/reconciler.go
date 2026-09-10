@@ -30,6 +30,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -152,6 +153,44 @@ type PVCCleanupAdapter[T any, PT ObjectPtr[T]] interface {
 	PVCLabelSelector(cr PT, targetName string) map[string]string
 }
 
+// IngressClassDefaultingAdapter is an optional Adapter extension for vendor
+// integrations built from the shared IngressSpec (see internal/grafana,
+// internal/prometheus, internal/rabbitmq). Kubernetes' own
+// DefaultIngressClass admission plugin is supposed to fill in an unset
+// ingressClassName from the cluster's default IngressClass, but it only
+// does so on an object's initial Create, never on a later Update -- fine
+// for Prometheus/RabbitMQ, whose Ingress this operator creates once,
+// directly, but not for Grafana's: grafana-operator creates and then
+// immediately updates its own generated Ingress every reconcile, and that
+// update (built from Grafana.spec.ingress.spec, which never had a class
+// admission could fill in) wipes out anything the admission plugin set on
+// the original create -- the class silently ends up empty forever, even
+// with a default IngressClass configured correctly.
+//
+// When an Adapter implements this, GenericReconciler resolves the
+// cluster's own default IngressClass itself and calls SetIngressClassName
+// before BuildManifest runs, whenever RequestedIngressClassName reports an
+// Ingress is wanted but left unset -- replicating what the admission
+// plugin does, but redone by this reconciler on every reconcile so it
+// self-heals regardless of vendor create/update timing. The mutation is
+// applied to the in-memory cr only, never persisted back to the CR's own
+// spec.
+type IngressClassDefaultingAdapter[T any, PT ObjectPtr[T]] interface {
+	// RequestedIngressClassName reports the CR's own explicit
+	// ingressClassName (which may be "") and whether an Ingress was
+	// requested at all -- (_, false) when spec.ingress itself is unset, so
+	// GenericReconciler knows not to bother resolving a default.
+	RequestedIngressClassName(cr PT) (className string, requested bool)
+	// SetIngressClassName sets the resolved class name in place on cr, for
+	// BuildManifest to pick up in this same reconcile.
+	SetIngressClassName(cr PT, className string)
+}
+
+// defaultIngressClassAnnotation marks the cluster's default IngressClass --
+// the same annotation Kubernetes' own DefaultIngressClass admission plugin
+// looks for.
+const defaultIngressClassAnnotation = "ingressclass.kubernetes.io/is-default-class"
+
 // GenericReconciler drives any paas CR type PT towards a matching,
 // same-named foreign target object (as described by Adapter) and mirrors
 // that object's status back onto the CR. This is the reconciliation logic
@@ -241,6 +280,15 @@ func (r *GenericReconciler[T, PT]) Reconcile(ctx context.Context, req ctrl.Reque
 	//    apply below is idempotent either way.
 	existing, err := r.getTarget(ctx, cr.GetNamespace(), targetName)
 	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// 2b. Resolve an unset ingressClassName to the cluster's own default,
+	//     for Adapters that need it (see IngressClassDefaultingAdapter) --
+	//     redone every reconcile so it self-heals regardless of a vendor
+	//     controller's own create/update timing.
+	if err := r.defaultIngressClass(ctx, cr); err != nil {
+		log.Error(err, "failed to resolve default IngressClass")
 		return ctrl.Result{}, err
 	}
 
@@ -396,6 +444,53 @@ func (r *GenericReconciler[T, PT]) deletePVCs(ctx context.Context, cr PT, target
 		return nil
 	}
 	return r.DeleteAllOf(ctx, &corev1.PersistentVolumeClaim{}, client.InNamespace(cr.GetNamespace()), client.MatchingLabels(labels))
+}
+
+// defaultIngressClass resolves cr's own ingressClassName to the cluster's
+// default IngressClass, in place, for Adapters implementing
+// IngressClassDefaultingAdapter -- a no-op otherwise, when no Ingress was
+// requested, when a class is already set, or when the cluster has no (or
+// more than one) IngressClass annotated as default, exactly mirroring
+// Kubernetes' own DefaultIngressClass admission plugin's no-op cases. See
+// IngressClassDefaultingAdapter's doc comment for why this is needed at all
+// instead of just relying on that admission plugin.
+func (r *GenericReconciler[T, PT]) defaultIngressClass(ctx context.Context, cr PT) error {
+	ica, ok := r.Adapter.(IngressClassDefaultingAdapter[T, PT])
+	if !ok {
+		return nil
+	}
+	className, requested := ica.RequestedIngressClassName(cr)
+	if !requested || className != "" {
+		return nil
+	}
+	resolved, err := r.resolveDefaultIngressClass(ctx)
+	if err != nil || resolved == "" {
+		return err
+	}
+	ica.SetIngressClassName(cr, resolved)
+	return nil
+}
+
+// resolveDefaultIngressClass returns the name of the cluster's single
+// IngressClass annotated ingressclass.kubernetes.io/is-default-class=true,
+// or "" if there is none or more than one (ambiguous -- Kubernetes' own
+// admission plugin also declines to guess in that case).
+func (r *GenericReconciler[T, PT]) resolveDefaultIngressClass(ctx context.Context) (string, error) {
+	var classes networkingv1.IngressClassList
+	if err := r.List(ctx, &classes); err != nil {
+		return "", err
+	}
+	resolved := ""
+	for _, ic := range classes.Items {
+		if ic.Annotations[defaultIngressClassAnnotation] != "true" {
+			continue
+		}
+		if resolved != "" {
+			return "", nil
+		}
+		resolved = ic.Name
+	}
+	return resolved, nil
 }
 
 // deleteExtra deletes one auxiliary object by GVK/name, ignoring not-found.

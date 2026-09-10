@@ -117,6 +117,21 @@ func (Adapter) TargetName(crName string) string { return crName }
 func (Adapter) ObjectKind() string   { return "Prometheus" }
 func (Adapter) FieldManager() string { return FieldManager }
 
+// RequestedIngressClassName and SetIngressClassName implement
+// reconciler.IngressClassDefaultingAdapter, keeping "leave ingressClassName
+// unset" behaving the same way here as it does for GrafanaInstance, rather
+// than depending on Kubernetes' own DefaultIngressClass admission plugin.
+func (Adapter) RequestedIngressClassName(cr *paasv1alpha1.PrometheusInstance) (string, bool) {
+	if cr.Spec.Ingress == nil {
+		return "", false
+	}
+	return cr.Spec.Ingress.IngressClassName, true
+}
+
+func (Adapter) SetIngressClassName(cr *paasv1alpha1.PrometheusInstance, className string) {
+	cr.Spec.Ingress.IngressClassName = className
+}
+
 // commonLabels returns the app.kubernetes.io/managed-by + paas.example.com/owner
 // pair every object this adapter creates carries.
 func commonLabels(owner string) map[string]string {

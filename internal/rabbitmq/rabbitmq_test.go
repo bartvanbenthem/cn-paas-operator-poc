@@ -76,6 +76,44 @@ func TestExtraResourcesIngress(t *testing.T) {
 	})
 }
 
+func TestRequestedIngressClassName(t *testing.T) {
+	baseSpec := paasv1alpha1.RabbitMQClusterSpec{
+		Replicas: 1,
+		Storage:  paasv1alpha1.StorageSpec{Size: "1Gi"},
+	}
+
+	t.Run("unset Ingress reports not requested", func(t *testing.T) {
+		cr := &paasv1alpha1.RabbitMQCluster{Spec: baseSpec}
+		class, requested := Adapter{}.RequestedIngressClassName(cr)
+		if requested || class != "" {
+			t.Fatalf("expected (\"\", false), got (%q, %v)", class, requested)
+		}
+	})
+
+	t.Run("Ingress set with an unset class reports requested with an empty class", func(t *testing.T) {
+		spec := baseSpec
+		spec.Ingress = &paasv1alpha1.IngressSpec{Host: "rabbitmq.example.com"}
+		cr := &paasv1alpha1.RabbitMQCluster{Spec: spec}
+		class, requested := Adapter{}.RequestedIngressClassName(cr)
+		if !requested || class != "" {
+			t.Fatalf("expected (\"\", true), got (%q, %v)", class, requested)
+		}
+	})
+
+	t.Run("SetIngressClassName sets it in place for ExtraResources to pick up", func(t *testing.T) {
+		spec := baseSpec
+		spec.Ingress = &paasv1alpha1.IngressSpec{Host: "rabbitmq.example.com"}
+		cr := &paasv1alpha1.RabbitMQCluster{Spec: spec}
+		Adapter{}.SetIngressClassName(cr, "haproxy")
+
+		extras := Adapter{}.ExtraResources(cr, "test", "default", "test")
+		class, _, _ := unstructured.NestedString(extras[0].Desired.Object, "spec", "ingressClassName")
+		if class != "haproxy" {
+			t.Fatalf("expected ingressClassName haproxy, got %q", class)
+		}
+	})
+}
+
 func TestBuildManifestExpose(t *testing.T) {
 	baseSpec := paasv1alpha1.RabbitMQClusterSpec{
 		Replicas: 1,

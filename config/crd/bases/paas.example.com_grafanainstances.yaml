@@ -82,9 +82,12 @@ spec:
               ingress:
                 description: |-
                   ingress exposes Grafana's web UI outside the cluster. Applied directly
-                  as the underlying Grafana's own spec.ingress -- grafana-operator wires
-                  the backend to its own generated Service itself, so no separate
-                  Ingress object is created by this operator.
+                  as the underlying Grafana's own spec.ingress -- grafana-operator
+                  creates and owns the resulting Ingress object itself (so no separate
+                  one is created by this operator), but mirrors Grafana.spec.ingress.spec
+                  onto it verbatim; it does not fill in the backend on its own, so
+                  internal/grafana's BuildManifest routes the rule at its own generated
+                  Service (see grafana.ServiceName/WebPort) itself.
                 properties:
                   annotations:
                     additionalProperties:
