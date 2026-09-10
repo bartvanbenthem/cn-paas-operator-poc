@@ -883,25 +883,46 @@ controller works here, since `IngressSpec` builds a plain standard
 helm upgrade --install haproxy-ingress kubernetes-ingress \
   --repo https://haproxytech.github.io/helm-charts \
   --version 1.54.0 -n haproxy-ingress --create-namespace \
-  --set controller.ingressClassResource.default=true
+  --set controller.ingressClassResource.default=true \
+  --set controller.service.type=LoadBalancer
 ```
+
+`controller.service.type` defaults to `NodePort` in this chart (confirmed
+against `helm show values haproxytech/kubernetes-ingress --version 1.54.0`),
+so it does **not** get a `LoadBalancer` Service on its own, even on a
+cloud-managed cluster with a working cloud-controller-manager (SKE on
+STACKIT included -- no MetalLB needed there, `type: LoadBalancer` Services
+get a real external IP from the cloud provider directly). Left at the
+default, the controller gets no public IP at all, and every `Ingress`'s
+`.status.loadBalancer.ingress` (its `ADDRESS` column in `kubectl get
+ingress`) ends up mirroring the controller Service's internal ClusterIP
+instead, via its `--publish-service` flag -- not reachable from outside the
+cluster. Pass `--set controller.service.type=LoadBalancer` explicitly, as
+above, to get a real public IP.
 
 Verify:
 
 ```sh
 kubectl get pods -n haproxy-ingress
 kubectl get ingressclass
+kubectl get svc -n haproxy-ingress   # EXTERNAL-IP is the address every spec.ingress.host should point its DNS record at
 ```
 
 The chart registers an `IngressClass` named `haproxy`; by default it does
 *not* mark it as the cluster's default (`--set
-controller.ingressClassResource.default=true` above turns that on), so
-`spec.ingress.ingressClassName` can be left unset -- without that flag,
-every `IngressSpec` needs `ingressClassName: haproxy` set explicitly, or its
-`Ingress` gets created but nothing serves it. On a cloud-managed cluster
-this chart also provisions a `LoadBalancer` Service fronting the controller
--- check `kubectl get svc -n haproxy-ingress` for its external IP/hostname
-and point your `spec.ingress.host` DNS record at it.
+controller.ingressClassResource.default=true` above turns that on).
+Regardless, set `spec.ingress.ingressClassName: haproxy` explicitly on
+every `IngressSpec` rather than relying on the cluster's default
+`IngressClass` to cover it: Kubernetes' `DefaultIngressClass` admission
+plugin only backfills an unset `ingressClassName` on the object's initial
+`Create`, never on a later `Update` -- fine for `RabbitMQCluster`/
+`PrometheusInstance` (this operator creates their `Ingress` once, directly),
+but `GrafanaInstance`'s is created and subsequently updated by
+grafana-operator itself, and an update that leaves `ingressClassName` unset
+does *not* get the default backfilled the way the original create would
+have -- the class can end up silently empty (`kubectl get ingress` showing
+`CLASS: <none>`) even with a default `IngressClass` configured correctly.
+Setting the field explicitly sidesteps that timing dependency entirely.
 
 ### Once the dependency operators are up
 
