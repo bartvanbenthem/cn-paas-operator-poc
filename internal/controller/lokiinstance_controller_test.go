@@ -196,5 +196,76 @@ var _ = Describe("LokiInstance Controller", func() {
 			By("verifying the StatefulSet itself was left alone -- it isn't owned by this reconciler")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: stsName, Namespace: resourceNamespace}, &appsv1.StatefulSet{})).To(Succeed())
 		})
+
+		It("should delete a stale, unhealthy pod stuck behind the fsGroup patch so the StatefulSet controller can recreate it", func() {
+			controllerReconciler := &LokiInstanceReconciler{
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: events.NewFakeRecorder(10),
+				Adapter:  loki.Adapter{},
+				Name:     LokiInstanceControllerName,
+			}
+
+			By("reconciling once to attach the finalizer, once more to apply the LokiStack")
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("simulating the Loki Operator having created the compactor StatefulSet, with no fsGroup set, at an old revision")
+			stsName := resourceName + "-compactor"
+			sts := &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{Name: stsName, Namespace: resourceNamespace},
+				Spec: appsv1.StatefulSetSpec{
+					ServiceName: stsName,
+					Selector:    &metav1.LabelSelector{MatchLabels: map[string]string{"app": stsName}},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": stsName}},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{Name: "loki", Image: "docker.io/grafana/loki:3.7.3"}},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, sts)).To(Succeed())
+			DeferCleanup(func() {
+				_ = k8sClient.Delete(ctx, sts)
+			})
+
+			By("simulating the pod the Loki Operator created from that (unpatched) revision, crash-looping and not Ready")
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      stsName + "-0",
+					Namespace: resourceNamespace,
+					Labels:    map[string]string{"app": stsName, "controller-revision-hash": "old-rev"},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{Name: "loki", Image: "docker.io/grafana/loki:3.7.3"}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+			pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionFalse}}
+			Expect(k8sClient.Status().Update(ctx, pod)).To(Succeed())
+
+			By("simulating the StatefulSet controller having computed a newer revision than the pod is running")
+			var withStatus appsv1.StatefulSet
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: stsName, Namespace: resourceNamespace}, &withStatus)).To(Succeed())
+			withStatus.Status.CurrentRevision = "old-rev"
+			withStatus.Status.UpdateRevision = "new-rev"
+			Expect(k8sClient.Status().Update(ctx, &withStatus)).To(Succeed())
+
+			By("reconciling again so ExtraResources patches fsGroup and unsticks the stale, unhealthy pod")
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			var patched appsv1.StatefulSet
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: stsName, Namespace: resourceNamespace}, &patched)).To(Succeed())
+			Expect(patched.Spec.Template.Spec.SecurityContext).NotTo(BeNil())
+			Expect(*patched.Spec.Template.Spec.SecurityContext.FSGroup).To(Equal(int64(10001)))
+
+			By("verifying the stale, unhealthy pod was deleted so it can be recreated from the patched template")
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: pod.Name, Namespace: resourceNamespace}, &corev1.Pod{})
+			Expect(errors.IsNotFound(err)).To(BeTrue())
+		})
 	})
 })

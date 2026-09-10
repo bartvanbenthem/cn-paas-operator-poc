@@ -115,6 +115,9 @@ type ExtraResource struct {
 	// and never deletes it on the CR's own deletion -- the vendor
 	// controller's own owner reference on the object handles that once the
 	// primary target goes away.
+	//
+	// When GVK is a StatefulSet, PatchOnly also gets a self-heal step for
+	// free: see unstickStatefulSetRollout.
 	PatchOnly bool
 }
 
@@ -317,6 +320,11 @@ func (r *GenericReconciler[T, PT]) applyExtraResources(ctx context.Context, cr P
 			if err := r.applyTarget(ctx, extra.Desired); err != nil {
 				return err
 			}
+			if extra.PatchOnly && extra.GVK == statefulSetGVK {
+				if err := r.unstickStatefulSetRollout(ctx, cr.GetNamespace(), extra.Name); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		if err := r.deleteExtra(ctx, extra.GVK, cr.GetNamespace(), extra.Name); err != nil {
@@ -360,6 +368,67 @@ func (r *GenericReconciler[T, PT]) deleteExtra(ctx context.Context, gvk schema.G
 		return nil
 	}
 	return err
+}
+
+// statefulSetGVK identifies the built-in apps/v1 StatefulSet kind, checked
+// against in applyExtraResources to trigger unstickStatefulSetRollout.
+var statefulSetGVK = schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "StatefulSet"}
+
+// unstickStatefulSetRollout breaks a structural deadlock in Kubernetes'
+// own StatefulSet controller that a PatchOnly field claim can otherwise run
+// straight into: with the (default) OrderedReady podManagementPolicy, that
+// controller refuses to roll a template change out to a pod until the pod
+// it's replacing first becomes Ready. If the pod is crash-looping for
+// exactly the reason the template change just fixed (e.g. our fsGroup
+// patch in internal/loki), it can never become Ready, so the fix sits in
+// the template forever without reaching the pod -- no amount of
+// Server-Side-Apply retries changes that, since the object itself is
+// already correct and generates no further events.
+//
+// Called right after a PatchOnly patch lands on a StatefulSet, this deletes
+// any of its pods that are both on a stale controller-revision-hash and not
+// Ready, letting the StatefulSet controller recreate them -- this time from
+// the already-patched template. Pods that are Ready are left alone even if
+// stale, so an in-progress, healthy rolling update is never interrupted.
+func (r *GenericReconciler[T, PT]) unstickStatefulSetRollout(ctx context.Context, namespace, name string) error {
+	sts, err := GetTarget(ctx, r.Client, statefulSetGVK, namespace, name)
+	if err != nil || sts == nil {
+		return err
+	}
+	updateRevision, _, _ := unstructured.NestedString(sts.Object, "status", "updateRevision")
+	currentRevision, _, _ := unstructured.NestedString(sts.Object, "status", "currentRevision")
+	if updateRevision == "" || updateRevision == currentRevision {
+		return nil
+	}
+	selector, _, _ := unstructured.NestedStringMap(sts.Object, "spec", "selector", "matchLabels")
+	if len(selector) == 0 {
+		return nil
+	}
+
+	var pods corev1.PodList
+	if err := r.List(ctx, &pods, client.InNamespace(namespace), client.MatchingLabels(selector)); err != nil {
+		return err
+	}
+	for i := range pods.Items {
+		pod := &pods.Items[i]
+		if pod.Labels["controller-revision-hash"] == updateRevision || isPodReady(pod) {
+			continue
+		}
+		if err := r.Delete(ctx, pod); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+// isPodReady reports whether pod's Ready condition is True.
+func isPodReady(pod *corev1.Pod) bool {
+	for _, c := range pod.Status.Conditions {
+		if c.Type == corev1.PodReady {
+			return c.Status == corev1.ConditionTrue
+		}
+	}
+	return false
 }
 
 // GetTarget fetches the current foreign target object identified by gvk,

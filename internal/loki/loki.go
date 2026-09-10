@@ -117,6 +117,18 @@ const (
 	// existing object -- it never touches SecurityContext, so a
 	// Server-Side-Apply field claim on fsGroup, once made, survives every
 	// future reconcile from the vendor controller.
+	//
+	// The patch alone doesn't self-heal a pod that's already crash-looping
+	// on the permission error, though -- and on a fresh LokiStack, the Loki
+	// Operator routinely creates the StatefulSet (and its first crashing
+	// pod) before this PatchOnly extra gets a chance to land, since it
+	// skips applying until the target exists. With the StatefulSets'
+	// default OrderedReady podManagementPolicy, Kubernetes then won't roll
+	// the (now-correct) template out to that pod until the pod is Ready --
+	// which it never becomes, since it's crashing on the defect the patch
+	// just fixed. See reconciler.unstickStatefulSetRollout, which the
+	// generic reconciler runs after every PatchOnly StatefulSet patch to
+	// break exactly that deadlock.
 	lokiFSGroup = 10001
 )
 
