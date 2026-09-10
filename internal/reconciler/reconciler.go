@@ -133,6 +133,25 @@ type ExtraResourcesAdapter[T any, PT ObjectPtr[T]] interface {
 	ExtraResources(cr PT, targetName, namespace, owner string) []ExtraResource
 }
 
+// PVCCleanupAdapter is an optional Adapter extension for vendor integrations
+// whose target backs its pods with PersistentVolumeClaims via plain
+// StatefulSet volumeClaimTemplates -- PVCs Kubernetes deliberately never
+// garbage-collects on the owning StatefulSet's (or its owner's) deletion,
+// unless persistentVolumeClaimRetentionPolicy.whenDeleted=Delete is set,
+// which most vendor operators don't set. This is unlike CNPG/mariadb-operator,
+// which manage their own PVCs directly and already delete them when their
+// Cluster/MariaDB CR is removed -- so their paas CRs need no equivalent
+// here. When an Adapter implements this, GenericReconciler deletes every
+// PersistentVolumeClaim matching the returned label selector, in the CR's
+// namespace, right after deleting the primary target on the CR's own
+// deletion -- giving the same "deleting the CR deletes its storage too"
+// behavior CNPG/mariadb-operator already provide.
+type PVCCleanupAdapter[T any, PT ObjectPtr[T]] interface {
+	// PVCLabelSelector returns the labels identifying every PVC backing
+	// targetName's StatefulSets, or nil/empty to delete none.
+	PVCLabelSelector(cr PT, targetName string) map[string]string
+}
+
 // GenericReconciler drives any paas CR type PT towards a matching,
 // same-named foreign target object (as described by Adapter) and mirrors
 // that object's status back onto the CR. This is the reconciliation logic
@@ -187,6 +206,11 @@ func (r *GenericReconciler[T, PT]) Reconcile(ctx context.Context, req ctrl.Reque
 
 			if err := r.deleteExtraResources(ctx, cr, targetName); err != nil {
 				log.Error(err, "failed to delete extra resources")
+				return ctrl.Result{}, err
+			}
+
+			if err := r.deletePVCs(ctx, cr, targetName); err != nil {
+				log.Error(err, "failed to delete PVCs")
 				return ctrl.Result{}, err
 			}
 
@@ -355,6 +379,23 @@ func (r *GenericReconciler[T, PT]) deleteExtraResources(ctx context.Context, cr 
 		}
 	}
 	return nil
+}
+
+// deletePVCs deletes every PersistentVolumeClaim matching the Adapter's
+// PVCLabelSelector (if it implements PVCCleanupAdapter), a no-op otherwise
+// or when the selector is empty. Called on the CR's own deletion path,
+// right after deleteTarget/deleteExtraResources -- see PVCCleanupAdapter's
+// doc comment for why this is needed for some vendors and not others.
+func (r *GenericReconciler[T, PT]) deletePVCs(ctx context.Context, cr PT, targetName string) error {
+	pvcAdapter, ok := r.Adapter.(PVCCleanupAdapter[T, PT])
+	if !ok {
+		return nil
+	}
+	labels := pvcAdapter.PVCLabelSelector(cr, targetName)
+	if len(labels) == 0 {
+		return nil
+	}
+	return r.DeleteAllOf(ctx, &corev1.PersistentVolumeClaim{}, client.InNamespace(cr.GetNamespace()), client.MatchingLabels(labels))
 }
 
 // deleteExtra deletes one auxiliary object by GVK/name, ignoring not-found.

@@ -119,6 +119,25 @@ func TestExtraResources(t *testing.T) {
 	}
 }
 
+func TestPVCLabelSelector(t *testing.T) {
+	cr := &paasv1alpha1.LokiInstance{Spec: baseSpec()}
+	got := Adapter{}.PVCLabelSelector(cr, "mystack")
+
+	want := map[string]string{
+		"app.kubernetes.io/name":       "lokistack",
+		"app.kubernetes.io/instance":   "mystack",
+		"app.kubernetes.io/managed-by": "lokistack-controller",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("expected %d labels, got %d (%v)", len(want), len(got), got)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("expected label %q=%q, got %q", k, v, got[k])
+		}
+	}
+}
+
 func TestServiceNames(t *testing.T) {
 	if got, want := QueryServiceName("mystack"), "mystack-query-frontend-http"; got != want {
 		t.Fatalf("expected %q, got %q", want, got)

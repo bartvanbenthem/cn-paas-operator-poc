@@ -323,7 +323,17 @@ just field count:
   (only `status.conditions[]`, `status.components`, and `status.storage`),
   so readiness is derived purely from its `Ready` condition. Only
   S3-compatible object storage is supported (see `LokiInstanceSpec`'s doc
-  comment) — GCS/Azure/Swift/AlibabaCloud are out of scope.
+  comment) — GCS/Azure/Swift/AlibabaCloud are out of scope. Deleting a
+  `LokiInstance` also deletes the PersistentVolumeClaims backing its
+  ingester/compactor/index-gateway StatefulSets (matched by the labels the
+  Loki Operator itself applies to them — see `internal/loki`'s
+  `PVCLabelSelector`), the same "deleting the CR deletes its storage too"
+  behavior `PostgresCluster`/`MariaDBCluster` already get for free from
+  CNPG/mariadb-operator managing their own PVCs directly — the Loki
+  Operator's plain `volumeClaimTemplates`-backed StatefulSets don't get
+  that from Kubernetes on their own, so this operator does it instead. This
+  is a one-way, irreversible deletion: back up first if you might need the
+  data again.
 - `AlloyInstance` diverges in a different way: the Alloy Operator is
   Operator SDK's Helm plugin wrapping the real `grafana/alloy` Helm chart
   (see `internal/alloy`'s package doc), so its `Alloy.spec` is that chart's

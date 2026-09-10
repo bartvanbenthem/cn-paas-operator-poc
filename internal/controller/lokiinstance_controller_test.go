@@ -25,6 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
@@ -202,6 +203,60 @@ var _ = Describe("LokiInstance Controller", func() {
 
 			By("verifying the StatefulSet itself was left alone -- it isn't owned by this reconciler")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: stsName, Namespace: resourceNamespace}, &appsv1.StatefulSet{})).To(Succeed())
+		})
+
+		It("should delete the ingester/compactor/index-gateway PVCs on the LokiInstance's own deletion", func() {
+			controllerReconciler := &LokiInstanceReconciler{
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: events.NewFakeRecorder(10),
+				Adapter:  loki.Adapter{},
+				Name:     LokiInstanceControllerName,
+			}
+
+			By("reconciling once to attach the finalizer, once more to apply the LokiStack")
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("simulating the Loki Operator having created a PVC for the ingester, labeled the way it labels every PVC it creates")
+			pvcName := "storage-" + resourceName + "-ingester-0"
+			pvc := &corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      pvcName,
+					Namespace: resourceNamespace,
+					Labels: map[string]string{
+						"app.kubernetes.io/name":       "lokistack",
+						"app.kubernetes.io/instance":   resourceName,
+						"app.kubernetes.io/managed-by": "lokistack-controller",
+						"app.kubernetes.io/component":  "ingester",
+					},
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+					Resources: corev1.VolumeResourceRequirements{
+						Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, pvc)).To(Succeed())
+
+			By("deleting the LokiInstance and reconciling its deletion path")
+			var toDelete paasv1alpha1.LokiInstance
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &toDelete)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, &toDelete)).To(Succeed())
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("verifying the PVC was deleted (or at least marked for deletion, since envtest has no PVC-protection controller to finish it off)")
+			var got corev1.PersistentVolumeClaim
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: resourceNamespace}, &got)
+			if err == nil {
+				Expect(got.DeletionTimestamp).NotTo(BeNil())
+			} else {
+				Expect(errors.IsNotFound(err)).To(BeTrue())
+			}
 		})
 
 		It("should delete a stale, unhealthy pod stuck behind the fsGroup patch so the StatefulSet controller can recreate it", func() {

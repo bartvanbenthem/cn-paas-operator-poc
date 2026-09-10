@@ -95,6 +95,18 @@ const (
 	// "Ready" condition yet.
 	unknownPhase = "Unknown"
 
+	// lokiStackNameLabel and lokiStackManagedByValue are two of the three
+	// labels the Loki Operator applies to every object it generates for a
+	// LokiStack, PVCs included -- confirmed directly against a live
+	// LokiStack's PVCs (`kubectl get pvc -o jsonpath='{.metadata.labels}'`),
+	// since this is the vendor controller's own runtime behavior and isn't
+	// part of the CRD's OpenAPI schema. Paired with
+	// "app.kubernetes.io/instance"=targetName (the third), this selector
+	// uniquely identifies every PVC backing one LokiStack's
+	// ingester/compactor/index-gateway StatefulSets -- see PVCLabelSelector.
+	lokiStackNameLabel      = "lokistack"
+	lokiStackManagedByValue = "lokistack-controller"
+
 	// lokiFSGroup is the fixed non-root UID/GID (10001) baked into the Loki
 	// Operator's own grafana/loki container image (its Dockerfile sets
 	// "USER 10001"). The Loki Operator's generated StatefulSets never set
@@ -206,6 +218,23 @@ func (Adapter) ExtraResources(_ *paasv1alpha1.LokiInstance, targetName, namespac
 		})
 	}
 	return extras
+}
+
+// PVCLabelSelector implements reconciler.PVCCleanupAdapter. Unlike
+// CNPG/mariadb-operator, which manage their own PVCs directly and already
+// delete them when their Cluster/MariaDB CR is removed, the Loki Operator's
+// ingester/compactor/index-gateway StatefulSets use plain
+// volumeClaimTemplates -- PVCs Kubernetes never garbage-collects on their
+// StatefulSet's deletion. This selector lets GenericReconciler delete them
+// itself on the LokiInstance's own deletion, for the same
+// "deleting the CR deletes its storage too" behavior those other resources
+// already get for free from their own vendor operator.
+func (Adapter) PVCLabelSelector(_ *paasv1alpha1.LokiInstance, targetName string) map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/name":       lokiStackNameLabel,
+		"app.kubernetes.io/instance":   targetName,
+		"app.kubernetes.io/managed-by": lokiStackManagedByValue,
+	}
 }
 
 // BuildManifest builds the desired loki.grafana.com/v1 LokiStack object for
