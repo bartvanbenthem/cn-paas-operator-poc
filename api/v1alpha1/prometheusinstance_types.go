@@ -75,6 +75,16 @@ type PrometheusInstanceSpec struct {
 	// "operator.prometheus.io/name" pod label) alongside the Ingress.
 	// +optional
 	Ingress *IngressSpec `json:"ingress,omitempty"`
+
+	// expose controls the type of the ClusterIP Service this operator
+	// creates fronting Prometheus's web UI/API (see Ingress's own doc
+	// comment for why that Service always exists regardless of Ingress),
+	// mirroring ServiceExposeSpec's use on
+	// PostgresCluster/MariaDBCluster/ValkeyCluster. Defaults to
+	// LoadBalancer when set; the Service stays ClusterIP when this is left
+	// unset entirely.
+	// +optional
+	Expose *ServiceExposeSpec `json:"expose,omitempty"`
 }
 
 // PrometheusInstanceStatus defines the observed state of PrometheusInstance.

@@ -243,23 +243,33 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.PrometheusInstance, name, namespac
 	return u
 }
 
-// ExtraResources builds the ClusterIP Service fronting the Prometheus web
-// UI/API -- always, regardless of Ingress, since other in-cluster consumers
-// (a GrafanaDatasource, in particular) need a stable in-cluster address even
+// ExtraResources builds the Service fronting the Prometheus web UI/API --
+// always, regardless of Ingress, since other in-cluster consumers (a
+// GrafanaDatasource, in particular) need a stable in-cluster address even
 // when Prometheus is never exposed externally -- plus an Ingress routed to
-// that Service, when requested. Implements
+// that Service, when requested. The Service's type defaults to ClusterIP,
+// or spec.Expose.Type (LoadBalancer by default) when Expose is set.
+// Implements
 // reconciler.ExtraResourcesAdapter[paasv1alpha1.PrometheusInstance, *paasv1alpha1.PrometheusInstance].
 func (Adapter) ExtraResources(cr *paasv1alpha1.PrometheusInstance, targetName, namespace, owner string) []reconciler.ExtraResource {
 	serviceName := ServiceName(targetName)
 	ingressName := targetName + "-ingress"
+
+	serviceType := "ClusterIP"
+	if cr.Spec.Expose != nil && cr.Spec.Expose.Type != "" {
+		serviceType = string(cr.Spec.Expose.Type)
+	}
 
 	service := &unstructured.Unstructured{}
 	service.SetGroupVersionKind(serviceGVK)
 	service.SetName(serviceName)
 	service.SetNamespace(namespace)
 	service.SetLabels(commonLabels(owner))
+	if cr.Spec.Expose != nil && len(cr.Spec.Expose.Annotations) > 0 {
+		service.SetAnnotations(cr.Spec.Expose.Annotations)
+	}
 	service.Object["spec"] = map[string]any{
-		"type":     "ClusterIP",
+		"type":     serviceType,
 		"selector": map[string]any{podSelectorLabel: targetName},
 		"ports": []any{
 			map[string]any{"name": "web", "port": int64(WebPort), "targetPort": "web"}, //nolint:goconst // "name" is an unrelated JSON key in each of its 3 occurrences

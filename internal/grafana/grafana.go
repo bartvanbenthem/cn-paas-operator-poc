@@ -178,6 +178,22 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.GrafanaInstance, name, namespace, 
 		grafanaSpec["ingress"] = grafanaIngress
 	}
 
+	if spec.Expose != nil {
+		serviceSpec := map[string]any{}
+		if spec.Expose.Type != "" {
+			serviceSpec["type"] = string(spec.Expose.Type)
+		}
+		grafanaService := map[string]any{specKey: serviceSpec}
+		if len(spec.Expose.Annotations) > 0 {
+			annotations := make(map[string]any, len(spec.Expose.Annotations))
+			for k, v := range spec.Expose.Annotations {
+				annotations[k] = v
+			}
+			grafanaService["metadata"] = map[string]any{"annotations": annotations}
+		}
+		grafanaSpec["service"] = grafanaService
+	}
+
 	if spec.Persistence != nil {
 		pvcSpec := map[string]any{
 			"accessModes": []any{"ReadWriteOnce"},

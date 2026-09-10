@@ -170,6 +170,21 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.RabbitMQCluster, name, namespace, 
 		clusterSpec["resources"] = resources
 	}
 
+	if spec.Expose != nil {
+		service := map[string]any{}
+		if spec.Expose.Type != "" {
+			service["type"] = string(spec.Expose.Type)
+		}
+		if len(spec.Expose.Annotations) > 0 {
+			annotations := make(map[string]any, len(spec.Expose.Annotations))
+			for k, v := range spec.Expose.Annotations {
+				annotations[k] = v
+			}
+			service["annotations"] = annotations
+		}
+		clusterSpec["service"] = service
+	}
+
 	u := &unstructured.Unstructured{}
 	u.SetGroupVersionKind(GVK)
 	u.SetName(name)

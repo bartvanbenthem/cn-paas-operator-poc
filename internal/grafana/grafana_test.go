@@ -79,6 +79,40 @@ func TestBuildManifestIngress(t *testing.T) {
 	})
 }
 
+func TestBuildManifestExpose(t *testing.T) {
+	t.Run("unset leaves spec.service unset", func(t *testing.T) {
+		cr := &paasv1alpha1.GrafanaInstance{Spec: paasv1alpha1.GrafanaInstanceSpec{Replicas: 1}}
+		u := Adapter{}.BuildManifest(cr, "test", "default", "test")
+
+		if _, found, _ := unstructured.NestedMap(u.Object, "spec", "service"); found {
+			t.Fatalf("expected no spec.service when Expose is unset")
+		}
+	})
+
+	t.Run("set fills the underlying Grafana's own spec.service", func(t *testing.T) {
+		cr := &paasv1alpha1.GrafanaInstance{
+			Spec: paasv1alpha1.GrafanaInstanceSpec{
+				Replicas: 1,
+				Expose: &paasv1alpha1.ServiceExposeSpec{
+					Type:        "LoadBalancer",
+					Annotations: map[string]string{"service.beta.kubernetes.io/foo": "bar"},
+				},
+			},
+		}
+		u := Adapter{}.BuildManifest(cr, "test", "default", "test")
+
+		svcType, _, _ := unstructured.NestedString(u.Object, "spec", "service", "spec", "type")
+		if svcType != "LoadBalancer" {
+			t.Fatalf("expected spec.service.spec.type LoadBalancer, got %q", svcType)
+		}
+
+		ann, _, _ := unstructured.NestedString(u.Object, "spec", "service", "metadata", "annotations", "service.beta.kubernetes.io/foo")
+		if ann != "bar" {
+			t.Fatalf("expected annotation to be copied through, got %q", ann)
+		}
+	})
+}
+
 func TestBuildManifestScopeLabel(t *testing.T) {
 	cr := &paasv1alpha1.GrafanaInstance{Spec: paasv1alpha1.GrafanaInstanceSpec{Replicas: 1}}
 	u := Adapter{}.BuildManifest(cr, "test", "team-a", "test")

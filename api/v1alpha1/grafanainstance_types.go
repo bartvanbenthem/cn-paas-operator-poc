@@ -56,6 +56,16 @@ type GrafanaInstanceSpec struct {
 	// +optional
 	Ingress *IngressSpec `json:"ingress,omitempty"`
 
+	// expose controls the type of the underlying Grafana's own generated
+	// Service (applied as its spec.service.spec), mirroring
+	// ServiceExposeSpec's use on PostgresCluster/MariaDBCluster/
+	// ValkeyCluster for a consistent way to reach any resource this operator
+	// manages directly by Service, independent of Ingress. Defaults to
+	// LoadBalancer when set; grafana-operator itself defaults to ClusterIP
+	// when this is left unset entirely.
+	// +optional
+	Expose *ServiceExposeSpec `json:"expose,omitempty"`
+
 	// prometheusRef names the PrometheusInstance (in this same namespace)
 	// this Grafana should be wired to via an auto-created GrafanaDatasource.
 	// Required, and deliberately has no convention-based default (e.g.

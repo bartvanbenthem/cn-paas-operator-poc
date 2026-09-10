@@ -143,6 +143,42 @@ func TestExtraResourcesIngress(t *testing.T) {
 	})
 }
 
+func TestExtraResourcesExpose(t *testing.T) {
+	t.Run("unset leaves the Service type ClusterIP", func(t *testing.T) {
+		cr := &paasv1alpha1.PrometheusInstance{Spec: paasv1alpha1.PrometheusInstanceSpec{Replicas: 1}}
+
+		extras := Adapter{}.ExtraResources(cr, testName, "default", testName)
+
+		svcType, _, _ := unstructured.NestedString(extras[0].Desired.Object, "spec", "type")
+		if svcType != "ClusterIP" {
+			t.Fatalf("expected Service type ClusterIP, got %q", svcType)
+		}
+	})
+
+	t.Run("set overrides the Service type and copies annotations", func(t *testing.T) {
+		cr := &paasv1alpha1.PrometheusInstance{
+			Spec: paasv1alpha1.PrometheusInstanceSpec{
+				Replicas: 1,
+				Expose: &paasv1alpha1.ServiceExposeSpec{
+					Type:        "LoadBalancer",
+					Annotations: map[string]string{"service.beta.kubernetes.io/foo": "bar"},
+				},
+			},
+		}
+
+		extras := Adapter{}.ExtraResources(cr, testName, "default", testName)
+
+		svc := extras[0]
+		svcType, _, _ := unstructured.NestedString(svc.Desired.Object, "spec", "type")
+		if svcType != "LoadBalancer" {
+			t.Fatalf("expected Service type LoadBalancer, got %q", svcType)
+		}
+		if ann := svc.Desired.GetAnnotations()["service.beta.kubernetes.io/foo"]; ann != "bar" {
+			t.Fatalf("expected annotation to be copied through, got %q", ann)
+		}
+	})
+}
+
 func TestBuildManifestServiceAccountName(t *testing.T) {
 	cr := &paasv1alpha1.PrometheusInstance{Spec: paasv1alpha1.PrometheusInstanceSpec{Replicas: 1}}
 	u := Adapter{}.BuildManifest(cr, testName, "default", testName)

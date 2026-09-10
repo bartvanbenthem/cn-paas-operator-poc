@@ -54,6 +54,31 @@ spec:
           spec:
             description: spec defines the desired state of RabbitMQCluster
             properties:
+              expose:
+                description: |-
+                  expose controls the type of the RabbitMQ Cluster Operator's own
+                  auto-generated Service fronting the cluster (applied as the
+                  underlying RabbitmqCluster's spec.service), mirroring
+                  ServiceExposeSpec's use on PostgresCluster/MariaDBCluster/
+                  ValkeyCluster. Defaults to LoadBalancer when set; the RabbitMQ
+                  Cluster Operator itself defaults to ClusterIP when this is left
+                  unset entirely.
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      annotations are copied verbatim onto the generated/underlying Service,
+                      e.g. cloud load-balancer tuning annotations.
+                    type: object
+                  type:
+                    default: LoadBalancer
+                    description: type is the Service type to create.
+                    enum:
+                    - LoadBalancer
+                    - NodePort
+                    type: string
+                type: object
               image:
                 description: |-
                   image is the full container image reference for the RabbitMQ

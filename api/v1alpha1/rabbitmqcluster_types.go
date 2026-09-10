@@ -67,6 +67,16 @@ type RabbitMQClusterSpec struct {
 	// +optional
 	Ingress *IngressSpec `json:"ingress,omitempty"`
 
+	// expose controls the type of the RabbitMQ Cluster Operator's own
+	// auto-generated Service fronting the cluster (applied as the
+	// underlying RabbitmqCluster's spec.service), mirroring
+	// ServiceExposeSpec's use on PostgresCluster/MariaDBCluster/
+	// ValkeyCluster. Defaults to LoadBalancer when set; the RabbitMQ
+	// Cluster Operator itself defaults to ClusterIP when this is left
+	// unset entirely.
+	// +optional
+	Expose *ServiceExposeSpec `json:"expose,omitempty"`
+
 	// monitoring configures Prometheus metrics collection for the underlying
 	// RabbitmqCluster. Unlike PostgresCluster/MariaDBCluster, the RabbitMQ
 	// Cluster Operator has no native PodMonitor/ServiceMonitor toggle of its

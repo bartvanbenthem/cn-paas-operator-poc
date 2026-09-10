@@ -55,6 +55,31 @@ spec:
           spec:
             description: spec defines the desired state of PrometheusInstance
             properties:
+              expose:
+                description: |-
+                  expose controls the type of the ClusterIP Service this operator
+                  creates fronting Prometheus's web UI/API (see Ingress's own doc
+                  comment for why that Service always exists regardless of Ingress),
+                  mirroring ServiceExposeSpec's use on
+                  PostgresCluster/MariaDBCluster/ValkeyCluster. Defaults to
+                  LoadBalancer when set; the Service stays ClusterIP when this is left
+                  unset entirely.
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      annotations are copied verbatim onto the generated/underlying Service,
+                      e.g. cloud load-balancer tuning annotations.
+                    type: object
+                  type:
+                    default: LoadBalancer
+                    description: type is the Service type to create.
+                    enum:
+                    - LoadBalancer
+                    - NodePort
+                    type: string
+                type: object
               ingress:
                 description: |-
                   ingress exposes Prometheus's web UI outside the cluster. The

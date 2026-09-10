@@ -76,6 +76,42 @@ func TestExtraResourcesIngress(t *testing.T) {
 	})
 }
 
+func TestBuildManifestExpose(t *testing.T) {
+	baseSpec := paasv1alpha1.RabbitMQClusterSpec{
+		Replicas: 1,
+		Storage:  paasv1alpha1.StorageSpec{Size: "1Gi"},
+	}
+
+	t.Run("unset leaves spec.service unset", func(t *testing.T) {
+		cr := &paasv1alpha1.RabbitMQCluster{Spec: baseSpec}
+		u := Adapter{}.BuildManifest(cr, "test", "default", "test")
+
+		if _, found, _ := unstructured.NestedMap(u.Object, "spec", "service"); found {
+			t.Fatalf("expected no spec.service when Expose is unset")
+		}
+	})
+
+	t.Run("set fills the underlying RabbitmqCluster's own spec.service", func(t *testing.T) {
+		spec := baseSpec
+		spec.Expose = &paasv1alpha1.ServiceExposeSpec{
+			Type:        "LoadBalancer",
+			Annotations: map[string]string{"service.beta.kubernetes.io/foo": "bar"},
+		}
+		cr := &paasv1alpha1.RabbitMQCluster{Spec: spec}
+		u := Adapter{}.BuildManifest(cr, "test", "default", "test")
+
+		svcType, _, _ := unstructured.NestedString(u.Object, "spec", "service", "type")
+		if svcType != "LoadBalancer" {
+			t.Fatalf("expected spec.service.type LoadBalancer, got %q", svcType)
+		}
+
+		ann, _, _ := unstructured.NestedString(u.Object, "spec", "service", "annotations", "service.beta.kubernetes.io/foo")
+		if ann != "bar" {
+			t.Fatalf("expected annotation to be copied through, got %q", ann)
+		}
+	})
+}
+
 func TestExtraResourcesMonitoring(t *testing.T) {
 	baseSpec := paasv1alpha1.RabbitMQClusterSpec{
 		Replicas: 1,
