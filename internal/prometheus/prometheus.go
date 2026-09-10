@@ -253,7 +253,14 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.PrometheusInstance, name, namespac
 // reconciler.ExtraResourcesAdapter[paasv1alpha1.PrometheusInstance, *paasv1alpha1.PrometheusInstance].
 func (Adapter) ExtraResources(cr *paasv1alpha1.PrometheusInstance, targetName, namespace, owner string) []reconciler.ExtraResource {
 	serviceName := ServiceName(targetName)
-	ingressName := targetName + "-ingress"
+	// "-prometheus-ingress", not the shorter "-ingress": a plain
+	// "<name>-ingress" can collide with another CR of a different kind
+	// sharing the same name in the same namespace (e.g. grafana-operator
+	// names its own generated Ingress "<Grafana-name>-ingress" too, a fixed
+	// convention this project doesn't control). The kind-specific suffix
+	// keeps this operator's own generated names collision-free regardless
+	// of what other CRs share the namespace.
+	ingressName := targetName + "-prometheus-ingress"
 
 	serviceType := "ClusterIP"
 	if cr.Spec.Expose != nil && cr.Spec.Expose.Type != "" {

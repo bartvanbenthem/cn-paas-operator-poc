@@ -87,7 +87,7 @@ func TestExtraResourcesIngress(t *testing.T) {
 		if len(extras) != 5 {
 			t.Fatalf("expected 5 extras, got %d", len(extras))
 		}
-		if extras[0].Name != "test-web" || extras[1].Name != "test-ingress" {
+		if extras[0].Name != "test-web" || extras[1].Name != "test-prometheus-ingress" {
 			t.Fatalf("unexpected extra names: %q, %q", extras[0].Name, extras[1].Name)
 		}
 		if extras[0].Desired == nil {

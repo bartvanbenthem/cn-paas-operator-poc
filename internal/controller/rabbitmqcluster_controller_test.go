@@ -156,7 +156,7 @@ var _ = Describe("RabbitMQCluster Controller", func() {
 			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 			Expect(err).NotTo(HaveOccurred())
 
-			ingressName := types.NamespacedName{Name: resourceName + "-ingress", Namespace: resourceNamespace}
+			ingressName := types.NamespacedName{Name: resourceName + "-rabbitmq-ingress", Namespace: resourceNamespace}
 			Expect(errors.IsNotFound(k8sClient.Get(ctx, ingressName, &networkingv1.Ingress{}))).To(BeTrue())
 
 			By("setting .spec.ingress and reconciling")

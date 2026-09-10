@@ -45,8 +45,8 @@ func TestExtraResourcesIngress(t *testing.T) {
 		if extras[0].GVK != ingress.GVK {
 			t.Fatalf("expected GVK %v, got %v", ingress.GVK, extras[0].GVK)
 		}
-		if extras[0].Name != "test-ingress" {
-			t.Fatalf("expected name test-ingress, got %q", extras[0].Name)
+		if extras[0].Name != "test-rabbitmq-ingress" {
+			t.Fatalf("expected name test-rabbitmq-ingress, got %q", extras[0].Name)
 		}
 	})
 

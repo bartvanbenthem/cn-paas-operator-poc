@@ -200,7 +200,14 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.RabbitMQCluster, name, namespace, 
 // GrafanaDashboard driven by spec.monitoring.enablePodMonitor. Implements
 // reconciler.ExtraResourcesAdapter[paasv1alpha1.RabbitMQCluster, *paasv1alpha1.RabbitMQCluster].
 func (Adapter) ExtraResources(cr *paasv1alpha1.RabbitMQCluster, targetName, namespace, owner string) []reconciler.ExtraResource {
-	ingressName := targetName + "-ingress"
+	// "-rabbitmq-ingress", not the shorter "-ingress": a plain
+	// "<name>-ingress" can collide with another CR of a different kind
+	// sharing the same name in the same namespace (e.g. grafana-operator
+	// names its own generated Ingress "<Grafana-name>-ingress" too, a fixed
+	// convention this project doesn't control). The kind-specific suffix
+	// keeps this operator's own generated names collision-free regardless
+	// of what other CRs share the namespace.
+	ingressName := targetName + "-rabbitmq-ingress"
 	serviceMonitorName := targetName + "-servicemonitor"
 	dashboardName := targetName + "-dashboard"
 

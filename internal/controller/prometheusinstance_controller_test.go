@@ -158,7 +158,7 @@ var _ = Describe("PrometheusInstance Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			serviceName := types.NamespacedName{Name: resourceName + "-web", Namespace: resourceNamespace}
-			ingressName := types.NamespacedName{Name: resourceName + "-ingress", Namespace: resourceNamespace}
+			ingressName := types.NamespacedName{Name: resourceName + "-prometheus-ingress", Namespace: resourceNamespace}
 			// The Service is created regardless of Ingress -- in-cluster
 			// consumers (a GrafanaDatasource, in particular) need a stable
 			// address even when Prometheus is never exposed externally.
