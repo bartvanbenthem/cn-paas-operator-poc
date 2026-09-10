@@ -18,11 +18,13 @@
 // this operator.
 //
 // The one exception is GrafanaDatasource: this package's ExtraResources
-// creates exactly one, wiring the generated Grafana to its paired
+// always creates one wiring the generated Grafana to its paired
 // PrometheusInstance (see GrafanaInstanceSpec.PrometheusRef), because that
 // pairing is inherent to standing up a usable Grafana and every building
 // block's own GrafanaDashboard (internal/cnpg, ...) depends on it existing.
-// See crd-grafana-datasource-v5.25.0.yaml in external-crds/ for the schema
+// A second, optional one wires it to a paired LokiInstance instead (see
+// GrafanaInstanceSpec.LokiRef), pruned via Desired: nil when unset. See
+// crd-grafana-datasource-v5.25.0.yaml in external-crds/ for the schema
 // this was built against.
 //
 // Adapter implements internal/reconciler's Adapter interface, so the actual
@@ -39,6 +41,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	paasv1alpha1 "github.com/bartvanbenthem/paas-operator/api/v1alpha1"
+	"github.com/bartvanbenthem/paas-operator/internal/loki"
 	"github.com/bartvanbenthem/paas-operator/internal/prometheus"
 	"github.com/bartvanbenthem/paas-operator/internal/reconciler"
 )
@@ -72,6 +75,11 @@ const (
 	// constant, so dashboard JSON keeps working regardless of the paired
 	// PrometheusInstance's own name.
 	DatasourceUID = "prometheus"
+
+	// LokiDatasourceUID is the fixed UID given to the optional Loki
+	// GrafanaDatasource this operator creates when GrafanaInstanceSpec.LokiRef
+	// is set, mirroring DatasourceUID.
+	LokiDatasourceUID = "loki"
 )
 
 // GVK is the GroupVersionKind of the grafana-operator Grafana this operator
@@ -188,10 +196,17 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.GrafanaInstance, name, namespace, 
 }
 
 // ExtraResources builds the GrafanaDatasource wiring this Grafana to its
-// paired PrometheusInstance (see GrafanaInstanceSpec.PrometheusRef).
+// paired PrometheusInstance (see GrafanaInstanceSpec.PrometheusRef), plus a
+// second one wiring it to a paired LokiInstance when
+// GrafanaInstanceSpec.LokiRef is set (pruned via Desired: nil otherwise).
 // Implements reconciler.ExtraResourcesAdapter[paasv1alpha1.GrafanaInstance,
 // *paasv1alpha1.GrafanaInstance].
 func (Adapter) ExtraResources(cr *paasv1alpha1.GrafanaInstance, targetName, namespace, owner string) []reconciler.ExtraResource {
+	labels := map[string]string{
+		"app.kubernetes.io/managed-by": FieldManager,
+		"paas.example.com/owner":       owner,
+	}
+
 	prometheusURL := fmt.Sprintf("http://%s.%s.svc:%d", prometheus.ServiceName(cr.Spec.PrometheusRef), namespace, prometheus.WebPort)
 
 	datasourceName := targetName + "-prometheus"
@@ -200,10 +215,7 @@ func (Adapter) ExtraResources(cr *paasv1alpha1.GrafanaInstance, targetName, name
 	datasource.SetGroupVersionKind(datasourceGVK)
 	datasource.SetName(datasourceName)
 	datasource.SetNamespace(namespace)
-	datasource.SetLabels(map[string]string{
-		"app.kubernetes.io/managed-by": FieldManager,
-		"paas.example.com/owner":       owner,
-	})
+	datasource.SetLabels(labels)
 	datasource.Object["spec"] = map[string]any{
 		"instanceSelector": InstanceSelector(namespace),
 		"uid":              DatasourceUID,
@@ -216,9 +228,34 @@ func (Adapter) ExtraResources(cr *paasv1alpha1.GrafanaInstance, targetName, name
 		},
 	}
 
-	return []reconciler.ExtraResource{
+	lokiDatasourceName := targetName + "-loki"
+	extras := []reconciler.ExtraResource{
 		{GVK: datasourceGVK, Name: datasourceName, Desired: datasource},
 	}
+
+	if cr.Spec.LokiRef == "" {
+		return append(extras, reconciler.ExtraResource{GVK: datasourceGVK, Name: lokiDatasourceName, Desired: nil})
+	}
+
+	lokiURL := fmt.Sprintf("http://%s.%s.svc:%d", loki.QueryServiceName(cr.Spec.LokiRef), namespace, loki.QueryPort)
+
+	lokiDatasource := &unstructured.Unstructured{}
+	lokiDatasource.SetGroupVersionKind(datasourceGVK)
+	lokiDatasource.SetName(lokiDatasourceName)
+	lokiDatasource.SetNamespace(namespace)
+	lokiDatasource.SetLabels(labels)
+	lokiDatasource.Object["spec"] = map[string]any{
+		"instanceSelector": InstanceSelector(namespace),
+		"uid":              LokiDatasourceUID,
+		"datasource": map[string]any{
+			"name":   "Loki",
+			"type":   "loki",
+			"access": "proxy",
+			"url":    lokiURL,
+		},
+	}
+
+	return append(extras, reconciler.ExtraResource{GVK: datasourceGVK, Name: lokiDatasourceName, Desired: lokiDatasource})
 }
 
 // ExtractStatus pulls stage/stageStatus/replicas out of a Grafana's

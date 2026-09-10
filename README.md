@@ -15,13 +15,15 @@ Operator](https://github.com/rabbitmq/cluster-operator)),
 `PrometheusInstance` (for the [Prometheus
 Operator](https://github.com/prometheus-operator/prometheus-operator)),
 `MongoDBCluster` (for the [Percona Server for MongoDB
-Operator](https://github.com/percona/percona-server-mongodb-operator)), and
+Operator](https://github.com/percona/percona-server-mongodb-operator)),
 `KafkaCluster` (for the [Strimzi Kafka
-Operator](https://github.com/strimzi/strimzi-kafka-operator)) —
+Operator](https://github.com/strimzi/strimzi-kafka-operator)), and
+`LokiInstance` (for the [Loki
+Operator](https://github.com/grafana/loki/tree/main/operator)) —
 reconciled into a full vendor object, so consumers get a working
-Postgres/Valkey/Grafana/MariaDB/RabbitMQ/Prometheus/MongoDB/Kafka instance
-from ~10 lines of YAML instead of having to understand the vendor's much
-larger spec.
+Postgres/Valkey/Grafana/MariaDB/RabbitMQ/Prometheus/MongoDB/Kafka/Loki
+instance from ~10 lines of YAML instead of having to understand the vendor's
+much larger spec.
 
 ```yaml
 apiVersion: paas.example.com/v1alpha1
@@ -103,6 +105,16 @@ spec:
   replicas: 3
   storage:
     size: 100Gi
+---
+apiVersion: paas.example.com/v1alpha1
+kind: LokiInstance
+metadata:
+  name: example-loki
+spec:
+  size: 1x.demo
+  storageClassName: standard
+  objectStorage:
+    secretName: example-loki-s3
 ```
 
 ## How it works
@@ -122,18 +134,19 @@ type means writing the adapter, not another copy of the reconcile loop.
 - `internal/cnpg/cnpg.go`, `internal/valkey/valkey.go`,
   `internal/grafana/grafana.go`, `internal/mariadb/mariadb.go`,
   `internal/rabbitmq/rabbitmq.go`, `internal/prometheus/prometheus.go`,
-  `internal/psmdb/psmdb.go`, and `internal/strimzi/strimzi.go` — one
-  `Adapter` implementation per vendor object: the target
-  `GroupVersionKind`, how to build the desired vendor object from our CR's
-  spec, and how to read phase/readiness back out of its status. None of the
-  vendors' Go API types or CRD schemas are vendored — we don't own those
-  CRDs, and their schemas are large and version-specific (see
+  `internal/psmdb/psmdb.go`, `internal/strimzi/strimzi.go`, and
+  `internal/loki/loki.go` — one `Adapter` implementation per vendor object:
+  the target `GroupVersionKind`, how to build the desired vendor object from
+  our CR's spec, and how to read phase/readiness back out of its status.
+  None of the vendors' Go API types or CRD schemas are vendored — we don't
+  own those CRDs, and their schemas are large and version-specific (see
   `crd-cnpg-v1.30.0.yaml`, `crd-valkey-v0.6.0.yaml`,
   `crd-grafana-v5.25.0.yaml`, `crd-mariadb-operator-v26.6.0.yaml`,
   `crd-rabbitmq-cluster-operator-v2.22.5.yaml`,
   `crd-prometheus-operator-v0.93.1.yaml`,
-  `crd-percona-server-mongodb-operator-v1.23.0.yaml`, and
-  `crd-strimzi-kafka-operator-v1.2.0.yaml`, all under `external-crds/`).
+  `crd-percona-server-mongodb-operator-v1.23.0.yaml`,
+  `crd-strimzi-kafka-operator-v1.2.0.yaml`, and
+  `crd-loki-operator-v0.11.0.yaml`, all under `external-crds/`).
   Instead the target is addressed purely through controller-runtime's
   dynamic client (`unstructured.Unstructured` + a `schema.GroupVersionKind`),
   and the desired object is built as a plain `map[string]any` applied via
@@ -142,20 +155,21 @@ type means writing the adapter, not another copy of the reconcile loop.
 - `api/v1alpha1/postgrescluster_types.go` / `valkeycluster_types.go` /
   `grafanainstance_types.go` / `mariadbcluster_types.go` /
   `rabbitmqcluster_types.go` / `prometheusinstance_types.go` /
-  `mongodbcluster_types.go` / `kafkacluster_types.go` — our own CRDs,
-  scaffolded and generated the normal kubebuilder way
-  (`+kubebuilder:validation`/`+kubebuilder:printcolumn` markers,
-  `controller-gen` for the CRD YAML and deepcopy code).
+  `mongodbcluster_types.go` / `kafkacluster_types.go` /
+  `lokiinstance_types.go` — our own CRDs, scaffolded and generated the
+  normal kubebuilder way (`+kubebuilder:validation`/`+kubebuilder:printcolumn`
+  markers, `controller-gen` for the CRD YAML and deepcopy code).
 - `internal/controller/postgrescluster_controller.go` /
   `valkeycluster_controller.go` / `grafanainstance_controller.go` /
   `mariadbcluster_controller.go` / `rabbitmqcluster_controller.go` /
   `prometheusinstance_controller.go` / `mongodbcluster_controller.go` /
-  `kafkacluster_controller.go` — a few lines each: they just instantiate
-  `GenericReconciler` with the matching adapter (`cnpg.Adapter{}` /
-  `valkey.Adapter{}` / `grafana.Adapter{}` / `mariadb.Adapter{}` /
-  `rabbitmq.Adapter{}` / `prometheus.Adapter{}` / `psmdb.Adapter{}` /
-  `strimzi.Adapter{}`) and register it with the manager. RBAC markers for
-  both our own CRD and the vendor's live here.
+  `kafkacluster_controller.go` / `lokiinstance_controller.go` — a few lines
+  each: they just instantiate `GenericReconciler` with the matching adapter
+  (`cnpg.Adapter{}` / `valkey.Adapter{}` / `grafana.Adapter{}` /
+  `mariadb.Adapter{}` / `rabbitmq.Adapter{}` / `prometheus.Adapter{}` /
+  `psmdb.Adapter{}` / `strimzi.Adapter{}` / `loki.Adapter{}`) and register it
+  with the manager. RBAC markers for both our own CRD and the vendor's live
+  here.
 - One paas CR maps to exactly one same-named vendor object (`KafkaCluster` is
   the one exception with two: see its own note in Scope below). On delete,
   the operator removes the vendor object before releasing its own finalizer,
@@ -169,12 +183,12 @@ type means writing the adapter, not another copy of the reconcile loop.
   `valkey.io_valkeyclusters.yaml`, `grafana.integreatly.org_grafanas.yaml`,
   `k8s.mariadb.com_mariadbs.yaml`, `rabbitmq.com_rabbitmqclusters.yaml`,
   `monitoring.coreos.com_prometheuses.yaml`,
-  `psmdb.percona.com_perconaservermongodbs.yaml`, and
-  `kafka.strimzi.io_kafkas.yaml` / `kafka.strimzi.io_kafkanodepools.yaml` are
-  (trimmed copies of, for the last three) the real vendor CRDs, loaded into
-  `envtest` so the controller tests validate the generated objects against
-  each vendor's actual OpenAPI schema — not just against our own assumptions
-  about its shape.
+  `psmdb.percona.com_perconaservermongodbs.yaml`,
+  `kafka.strimzi.io_kafkas.yaml` / `kafka.strimzi.io_kafkanodepools.yaml`,
+  and `loki.grafana.com_lokistacks.yaml` are (trimmed copies of, for the
+  last three) the real vendor CRDs, loaded into `envtest` so the controller
+  tests validate the generated objects against each vendor's actual OpenAPI
+  schema — not just against our own assumptions about its shape.
 
 ### Adding another vendor integration
 
@@ -224,7 +238,13 @@ ClusterIP Service fronting it); `MongoDBCluster` exposes `replicas`, `image`,
 `storage.size`, `storage.storageClass`, optional `resources`, optional
 `monitoring.enablePodMonitor`, and optional `expose`; `KafkaCluster` exposes
 `replicas`, `version`, `storage.size`, `storage.storageClass`, optional
-`resources`, optional `monitoring.enablePodMonitor`, and optional `expose`.
+`resources`, optional `monitoring.enablePodMonitor`, and optional `expose`;
+`LokiInstance` exposes `size`, `storageClassName`, and
+`objectStorage.secretName`. `GrafanaInstance` additionally exposes an
+optional `lokiRef`, mirroring its required `prometheusRef`: when set,
+`internal/grafana` creates a second GrafanaDatasource wiring the Grafana to
+the named `LokiInstance`, the same way `prometheusRef` wires it to a
+PrometheusInstance.
 All `resources` fields reuse `corev1.ResourceRequirements` directly, except
 `GrafanaInstance`, which doesn't expose one: the real field lives deep
 inside `spec.deployment.spec.template.spec.containers[].resources` (keyed by
@@ -241,7 +261,9 @@ discovery, affinity, etc.; the Percona Server for MongoDB Operator's
 sharding, backups, PMM, custom users, TLS, etc.; the Strimzi Kafka
 Operator's `Kafka.spec.kafka.config` broker tuning, Cruise Control, Kafka
 Connect/MirrorMaker/Bridge, entity operator, dedicated controller/broker
-node pools, etc.) is left at that vendor's own defaults. Extending a mapping
+node pools, etc.; the Loki Operator's `spec.tenants`, `spec.rules`,
+`spec.limits`, `spec.replicationFactor`, per-component `spec.template`
+overrides, etc.) is left at that vendor's own defaults. Extending a mapping
 means adding a field to the CR's `*Spec` type in `api/v1alpha1/`, running
 `make manifests generate`, and threading it through that vendor's
 `BuildManifest` in `internal/<vendor>/`.
@@ -277,6 +299,16 @@ just field count:
   a native Kafka plugin, not a sidecar) — Percona's/Strimzi's own PMM/JMX
   based monitoring stacks are not used, since every other building block
   here standardizes on the Prometheus Operator + Grafana instead.
+- `LokiInstance` diverges the most of all: it has no ephemeral/local-disk
+  storage mode at all (`objectStorage.secretName` and `storageClassName`
+  are both required, not optional the way `storage`/`persistence` are
+  elsewhere), it's sized by a `size` t-shirt value instead of a `replicas`
+  count, and like `KafkaClusterStatus`, `LokiInstanceStatus` has no
+  replica-count field — the underlying LokiStack's own `.status` has none
+  (only `status.conditions[]`, `status.components`, and `status.storage`),
+  so readiness is derived purely from its `Ready` condition. Only
+  S3-compatible object storage is supported (see `LokiInstanceSpec`'s doc
+  comment) — GCS/Azure/Swift/AlibabaCloud are out of scope.
 
 Notes on what's deliberately out of scope:
 - valkey-operator also defines a `ValkeyNode` CRD, but it's explicitly
@@ -308,6 +340,13 @@ Notes on what's deliberately out of scope:
   Kafka Connect); this operator only targets `Kafka` (plus the one
   `KafkaNodePool` it requires, see above), not any of the surrounding
   ecosystem.
+- the Loki Operator also defines `AlertingRule`/`RecordingRule`/
+  `RulerConfig` CRDs (all consumed by its optional ruler component, which
+  `LokiInstance` never enables via `spec.rules`); this operator only
+  targets `LokiStack` itself. Its multi-tenant gateway component is also
+  out of scope, since it requires either OpenShift's own OAuth integration
+  or a self-managed OIDC provider — see `internal/loki`'s package doc for
+  what talking to a gatewayless LokiStack means for callers.
 
 ## Verified while building this
 
@@ -316,27 +355,35 @@ deepcopy code via `controller-gen`), `make lint` (golangci-lint, 0 issues),
 and `make test` (a real `envtest` API server, with our CRDs and CNPG's,
 valkey-operator's, grafana-operator's, mariadb-operator's, the RabbitMQ
 Cluster Operator's, the Prometheus Operator's, the Percona Server for
-MongoDB Operator's, and the Strimzi Kafka Operator's actual (trimmed, for
-the last two) CRDs all loaded — see above) all pass; all eight controller
-tests exercise finalizer-add, Server-Side Apply of the generated vendor
-object(s), and the status-mirroring logic end to end (`KafkaCluster`'s two
-tests also assert the `KafkaNodePool` extra is always present regardless of
-the monitoring toggle). Not run: anything against a live cluster with CNPG,
-valkey-operator, grafana-operator, mariadb-operator, the RabbitMQ Cluster
-Operator, the Prometheus Operator, the Percona Server for MongoDB Operator,
-or the Strimzi Kafka Operator actually installed and reconciling — do that
-before trusting this in anything real (the Grafana mapping in particular is
-untested against a live grafana-operator: the `deployment.spec.replicas`
-and `persistentVolumeClaim` paths are correct per its CRD schema, but its
+MongoDB Operator's, the Strimzi Kafka Operator's, and the Loki Operator's
+actual (trimmed, for the last three) CRDs all loaded — see above) all pass;
+all nine controller tests exercise finalizer-add, Server-Side Apply of the
+generated vendor object(s), and the status-mirroring logic end to end
+(`KafkaCluster`'s two tests also assert the `KafkaNodePool` extra is always
+present regardless of the monitoring toggle). Not run: anything against a
+live cluster with CNPG, valkey-operator, grafana-operator, mariadb-operator,
+the RabbitMQ Cluster Operator, the Prometheus Operator, the Percona Server
+for MongoDB Operator, the Strimzi Kafka Operator, or the Loki Operator
+actually installed and reconciling — do that before trusting this in
+anything real (the Grafana mapping in particular is untested against a live
+grafana-operator: the `deployment.spec.replicas` and
+`persistentVolumeClaim` paths are correct per its CRD schema, but its
 actual reconciliation behavior hasn't been exercised end to end; same
 caveat for `MariaDBCluster`/`RabbitMQCluster`/`PrometheusInstance`/
-`MongoDBCluster`/`KafkaCluster` against a live mariadb-operator/RabbitMQ
-Cluster Operator/Prometheus Operator/Percona Server for MongoDB Operator/
-Strimzi Kafka Operator — `MongoDBCluster`'s exporter-sidecar wiring and
-`KafkaCluster`'s `KafkaNodePool` linkage are the two mappings with the most
-moving parts of any building block here, so double-check `Ready` actually
-flips true, the `PodMonitor` picks up real scrape targets, and the Grafana
-dashboards render real panel data before relying on them).
+`MongoDBCluster`/`KafkaCluster`/`LokiInstance` against a live
+mariadb-operator/RabbitMQ Cluster Operator/Prometheus Operator/Percona
+Server for MongoDB Operator/Strimzi Kafka Operator/Loki Operator —
+`MongoDBCluster`'s exporter-sidecar wiring and `KafkaCluster`'s
+`KafkaNodePool` linkage are the two mappings with the most moving parts of
+any building block here, so double-check `Ready` actually flips true, the
+`PodMonitor` picks up real scrape targets, and the Grafana dashboards
+render real panel data before relying on them; for `LokiInstance`
+specifically, double-check that a real object storage Secret's key layout
+matches what `internal/loki`'s doc comment assumes, that `Ready` actually
+flips true for a real bucket, and that Grafana's auto-wired Loki datasource
+can actually reach the query-frontend Service and return real query
+results, since the gatewayless single-tenant request path it relies on has
+not been exercised against a live Loki Operator).
 
 ## Installing the Dependency Operators
 
@@ -344,15 +391,17 @@ paas-operator only ever talks to the vendor CRDs (CNPG's `Cluster`,
 valkey-operator's `ValkeyCluster`, grafana-operator's `Grafana`,
 mariadb-operator's `MariaDB`, the RabbitMQ Cluster Operator's
 `RabbitmqCluster`, the Prometheus Operator's `Prometheus`, the Percona
-Server for MongoDB Operator's `PerconaServerMongoDB`, and the Strimzi Kafka
-Operator's `Kafka`/`KafkaNodePool`) via Server-Side Apply — it never
-installs the vendor operators themselves. Each one has to be running in the
-cluster *before*
+Server for MongoDB Operator's `PerconaServerMongoDB`, the Strimzi Kafka
+Operator's `Kafka`/`KafkaNodePool`, and the Loki Operator's `LokiStack`) via
+Server-Side Apply — it never installs the vendor operators themselves. Each
+one has to be running in the cluster *before*
 paas-operator can reconcile anything, otherwise `BuildManifest`'s
 Server-Side Apply calls fail because the target CRD doesn't exist yet. Most
 ship a Helm chart; the RabbitMQ Cluster Operator ships a plain manifest
 instead (its own recommended install path). That's the preferred route for
-each below.
+each below. The Loki Operator is the one exception with no Helm chart and a
+non-standard kustomize layout, plus an extra cert-manager prerequisite —
+see its own section below.
 
 Install order doesn't matter between them (none depend on each other) — just
 make sure whichever ones you actually plan to create CRs for are up before
@@ -577,6 +626,68 @@ this operator was built and tested against — both routes above install the
 matching `1.2.0` release. Strimzi is KRaft-only as of this version (no
 ZooKeeper to install separately).
 
+### Loki Operator (for `LokiInstance`)
+
+Unlike every dependency above, the Loki Operator ships no Helm chart, and
+its kustomize layout doesn't follow the standard kubebuilder `config/default`
+convention every other operator here uses — it's split into
+`config/overlays/{community,community-openshift,development,openshift}`
+instead. `community` is the one for a plain (non-OpenShift) cluster, and it
+already points at the real, current release image:
+
+```sh
+kubectl apply -k "https://github.com/grafana/loki/operator/config/overlays/community?ref=operator/v0.11.0"
+```
+
+This needs [cert-manager](https://cert-manager.io) installed **first**: the
+overlay wires up a `ValidatingWebhookConfiguration` (covering `LokiStack`
+and the Loki Operator's other CRDs) backed by a cert-manager
+`Issuer`/`Certificate` for its TLS, and that webhook's `failurePolicy` is
+`Fail` — without cert-manager running, the `Certificate`/`Issuer` objects
+can't even be created (their CRDs won't exist), the webhook never gets a
+valid serving cert, and every `LokiStack` create/update is then rejected by
+the API server outright. None of this project's other dependencies need
+cert-manager; this one does.
+
+```sh
+# if cert-manager isn't already installed:
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+```
+
+If you'd rather avoid the kustomize/cert-manager route entirely, the
+operator is also published to
+[OperatorHub](https://operatorhub.io/operator/loki-operator) (package
+`loki-operator`) for installation via
+[Operator Lifecycle Manager](https://olm.operatorframework.io) (OLM), which
+manages the webhook certificates itself instead of relying on cert-manager.
+
+Verify:
+
+```sh
+kubectl get pods -n loki-operator
+kubectl get crd lokistacks.loki.grafana.com
+```
+
+`external-crds/crd-loki-operator-v0.11.0.yaml` is the CRD this operator was
+built and tested against, matching the `operator/v0.11.0` tag and
+`docker.io/grafana/loki-operator:0.11.0` image used above — if you install a
+different version, double-check `internal/loki`'s field paths still match.
+
+You'll also need an S3-compatible bucket and a Secret with its credentials
+before creating a `LokiInstance` — see `LokiInstanceSpec.ObjectStorage`'s
+doc comment in `api/v1alpha1/lokiinstance_types.go` for the exact key
+layout (`bucketnames`, `endpoint`, `region`, `access_key_id`,
+`access_key_secret`), e.g.:
+
+```sh
+kubectl create secret generic example-loki-s3 \
+  --from-literal=bucketnames=my-loki-bucket \
+  --from-literal=endpoint=https://s3.us-east-1.amazonaws.com \
+  --from-literal=region=us-east-1 \
+  --from-literal=access_key_id=<id> \
+  --from-literal=access_key_secret=<secret>
+```
+
 ### Once the dependency operators are up
 
 Install paas-operator's own CRDs and controller (see below), then the
@@ -584,8 +695,10 @@ samples in `config/samples/` — `paas_v1alpha1_postgrescluster.yaml`,
 `paas_v1alpha1_valkeycluster.yaml`, `paas_v1alpha1_grafanainstance.yaml`,
 `paas_v1alpha1_mariadbcluster.yaml`, `paas_v1alpha1_rabbitmqcluster.yaml`,
 `paas_v1alpha1_prometheusinstance.yaml`, `paas_v1alpha1_mongodbcluster.yaml`,
-`paas_v1alpha1_kafkacluster.yaml` — double as a smoke test that each
-dependency operator is reachable and correctly versioned.
+`paas_v1alpha1_kafkacluster.yaml`, `paas_v1alpha1_lokiinstance.yaml` (after
+creating the object storage Secret it references, see above) — double as a
+smoke test that each dependency operator is reachable and correctly
+versioned.
 
 ## Getting Started
 
@@ -597,7 +710,8 @@ dependency operator is reachable and correctly versioned.
 - The dependency operators installed — see "Installing the Dependency
   Operators" above — for whichever CRs (`PostgresCluster`, `ValkeyCluster`,
   `GrafanaInstance`, `MariaDBCluster`, `RabbitMQCluster`,
-  `PrometheusInstance`, `MongoDBCluster`, `KafkaCluster`) you plan to create.
+  `PrometheusInstance`, `MongoDBCluster`, `KafkaCluster`, `LokiInstance`)
+  you plan to create.
 
 ### To Deploy on the cluster
 **Build and push your image to the location specified by `IMG`:**

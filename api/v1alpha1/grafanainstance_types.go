@@ -70,6 +70,15 @@ type GrafanaInstanceSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	// +required
 	PrometheusRef string `json:"prometheusRef"`
+
+	// lokiRef names the LokiInstance (in this same namespace) this Grafana
+	// should be wired to via a second auto-created GrafanaDatasource,
+	// mirroring PrometheusRef. Unlike PrometheusRef this is optional -- not
+	// every Grafana needs a Loki datasource. The same PrometheusRef caveats
+	// apply: no convention-based default, and the referenced LokiInstance
+	// need not exist yet when this is set.
+	// +optional
+	LokiRef string `json:"lokiRef,omitempty"`
 }
 
 // GrafanaInstanceStatus defines the observed state of GrafanaInstance.

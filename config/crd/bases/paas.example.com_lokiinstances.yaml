@@ -4,22 +4,22 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
-  name: grafanainstances.paas.example.com
+  name: lokiinstances.paas.example.com
 spec:
   group: paas.example.com
   names:
-    kind: GrafanaInstance
-    listKind: GrafanaInstanceList
-    plural: grafanainstances
+    kind: LokiInstance
+    listKind: LokiInstanceList
+    plural: lokiinstances
     shortNames:
-    - gfi
-    singular: grafanainstance
+    - loki
+    singular: lokiinstance
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.replicas
-      name: Replicas
-      type: integer
+    - jsonPath: .spec.size
+      name: Size
+      type: string
     - jsonPath: .status.ready
       name: Ready
       type: boolean
@@ -32,7 +32,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: GrafanaInstance is the Schema for the grafanainstances API
+        description: LokiInstance is the Schema for the lokiinstances API
         properties:
           apiVersion:
             description: |-
@@ -52,102 +52,65 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of GrafanaInstance
+            description: spec defines the desired state of LokiInstance
             properties:
-              ingress:
+              objectStorage:
                 description: |-
-                  ingress exposes Grafana's web UI outside the cluster. Applied directly
-                  as the underlying Grafana's own spec.ingress -- grafana-operator wires
-                  the backend to its own generated Service itself, so no separate
-                  Ingress object is created by this operator.
+                  objectStorage configures the S3-compatible bucket the LokiStack reads
+                  and writes chunks and the index to.
                 properties:
-                  annotations:
-                    additionalProperties:
-                      type: string
+                  secretName:
                     description: |-
-                      annotations are copied verbatim onto the generated Ingress, e.g. for
-                      ingress-controller-specific tuning (cert-manager issuer, nginx rewrite
-                      rules, etc.).
-                    type: object
-                  host:
-                    description: |-
-                      host is the DNS hostname routed to this resource, e.g.
-                      "grafana.example.com".
-                    type: string
-                  ingressClassName:
-                    description: |-
-                      ingressClassName selects the IngressClass that should implement this
-                      Ingress. Defaults to the cluster's default IngressClass when unset.
-                    type: string
-                  tlsSecretName:
-                    description: |-
-                      tlsSecretName enables TLS termination at the ingress controller using
-                      this Secret (must already exist in the same namespace and contain a
-                      matching cert/key, e.g. one managed by cert-manager). When unset, the
-                      Ingress is served over plain HTTP.
+                      secretName names a Secret, in the same namespace, laid out the way the
+                      Loki Operator's own S3 object storage secret expects: a "bucketnames"
+                      key (comma-separated if more than one), an "endpoint" key (a full
+                      "https://..." URL -- AWS S3 itself expects
+                      "https://s3.<region>.amazonaws.com"), an optional "region" key
+                      (required for AWS S3, optional for other S3-compatible endpoints),
+                      and "access_key_id"/"access_key_secret" keys. Must already exist --
+                      this operator never creates it or reads its contents, only references
+                      it by name, so a wrong or missing Secret surfaces as the underlying
+                      LokiStack's own "MissingObjectStorageSecret"/"InvalidObjectStorageSecret"
+                      Degraded condition rather than a failure here.
+                    minLength: 1
                     type: string
                 required:
-                - host
+                - secretName
                 type: object
-              lokiRef:
+              size:
+                default: 1x.demo
                 description: |-
-                  lokiRef names the LokiInstance (in this same namespace) this Grafana
-                  should be wired to via a second auto-created GrafanaDatasource,
-                  mirroring PrometheusRef. Unlike PrometheusRef this is optional -- not
-                  every Grafana needs a Loki datasource. The same PrometheusRef caveats
-                  apply: no convention-based default, and the referenced LokiInstance
-                  need not exist yet when this is set.
+                  size selects one of the Loki Operator's supported deployment scale-out
+                  sizes, which determines replica counts and resource requests for every
+                  LokiStack component (distributor, ingester, querier, ...). Defaults to
+                  "1x.demo", the smallest, single-replica-per-component size meant for
+                  evaluation/development, not production use.
+                enum:
+                - 1x.demo
+                - 1x.pico
+                - 1x.extra-small
+                - 1x.small
+                - 1x.medium
                 type: string
-              persistence:
+              storageClassName:
                 description: |-
-                  persistence settings for Grafana's data volume. When unset, no PVC is
-                  requested and Grafana runs with ephemeral storage.
-                properties:
-                  size:
-                    description: size is the volume size, e.g. "10Gi".
-                    type: string
-                  storageClass:
-                    description: storageClass name. Defaults to the cluster's default
-                      StorageClass when unset.
-                    type: string
-                required:
-                - size
-                type: object
-              prometheusRef:
-                description: |-
-                  prometheusRef names the PrometheusInstance (in this same namespace)
-                  this Grafana should be wired to via an auto-created GrafanaDatasource.
-                  Required, and deliberately has no convention-based default (e.g.
-                  assuming a PrometheusInstance is always named "prometheus"): a wrong
-                  guess produces a GrafanaDatasource pointing at a Service that doesn't
-                  exist, which fails silently -- grafana-operator reports the
-                  GrafanaDatasource itself as successfully applied, since "applied"
-                  only means the config was pushed to Grafana, not that Grafana can
-                  actually reach it. The referenced PrometheusInstance need not exist
-                  yet: the datasource is created regardless of whether it currently
-                  resolves to anything.
+                  storageClassName is the StorageClass used for the PVCs the Loki
+                  Operator provisions for its stateful components (ingester WAL, index
+                  gateway cache, compactor working directory, ...). The Loki Operator
+                  has no ephemeral-storage fallback the way the Prometheus Operator/
+                  grafana-operator do, so this is required.
                 minLength: 1
                 type: string
-              replicas:
-                default: 1
-                description: replicas is the number of Grafana pods to run.
-                format: int32
-                minimum: 0
-                type: integer
-              version:
-                description: |-
-                  version sets the tag of the default docker.io/grafana/grafana image.
-                  Defaults to the grafana-operator's own default version when unset.
-                type: string
             required:
-            - prometheusRef
+            - objectStorage
+            - storageClassName
             type: object
           status:
-            description: status defines the observed state of GrafanaInstance
+            description: status defines the observed state of LokiInstance
             properties:
               conditions:
                 description: |-
-                  conditions represent the current state of the GrafanaInstance resource.
+                  conditions represent the current state of the LokiInstance resource.
                   Each condition has a unique type and reflects the status of a specific aspect of the resource.
 
                   Standard condition types include:
@@ -219,18 +182,16 @@ spec:
                   state.
                 type: string
               phase:
-                description: phase is a verbatim copy of the underlying Grafana's
-                  status.stage.
+                description: |-
+                  phase is the reason of the underlying LokiStack's most recently
+                  observed condition (Ready, or whichever of Pending/Failed/Degraded is
+                  currently true; the Loki Operator has no separate status.phase field).
                 type: string
               ready:
                 description: |-
-                  ready is true once the underlying Grafana reports its reconciliation
-                  stage as complete.
+                  ready is true once the underlying LokiStack reports its "Ready"
+                  condition as True.
                 type: boolean
-              replicas:
-                description: replicas is the underlying Grafana's status.replicas.
-                format: int32
-                type: integer
             type: object
         required:
         - spec

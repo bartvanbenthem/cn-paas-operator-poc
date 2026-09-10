@@ -95,8 +95,8 @@ func TestExtraResourcesDatasource(t *testing.T) {
 		}
 
 		extras := Adapter{}.ExtraResources(cr, "test", "team-a", "test")
-		if len(extras) != 1 {
-			t.Fatalf("expected 1 extra, got %d", len(extras))
+		if len(extras) != 2 {
+			t.Fatalf("expected 2 extras (prometheus datasource + loki datasource placeholder), got %d", len(extras))
 		}
 
 		ds := extras[0]
@@ -108,7 +108,7 @@ func TestExtraResourcesDatasource(t *testing.T) {
 		}
 
 		url, _, _ := unstructured.NestedString(ds.Desired.Object, "spec", "datasource", "url")
-		if want := "http://custom-prom-web.team-a.svc:9090"; url != want {
+		if want := "http://custom-prom-web.team-a.svc:9090"; want != url {
 			t.Fatalf("expected datasource url %q, got %q", want, url)
 		}
 
@@ -120,6 +120,41 @@ func TestExtraResourcesDatasource(t *testing.T) {
 		uid, _, _ := unstructured.NestedString(ds.Desired.Object, "spec", "uid")
 		if uid != DatasourceUID {
 			t.Fatalf("expected uid %q, got %q", DatasourceUID, uid)
+		}
+
+		if extras[1].Desired != nil {
+			t.Fatalf("expected the loki datasource to be absent when LokiRef is unset")
+		}
+	})
+
+	t.Run("wires a second datasource to LokiRef when set", func(t *testing.T) {
+		cr := &paasv1alpha1.GrafanaInstance{
+			Spec: paasv1alpha1.GrafanaInstanceSpec{Replicas: 1, PrometheusRef: "prom", LokiRef: "custom-loki"},
+		}
+
+		extras := Adapter{}.ExtraResources(cr, "test", "team-a", "test")
+		if len(extras) != 2 {
+			t.Fatalf("expected 2 extras, got %d", len(extras))
+		}
+
+		lokiDS := extras[1]
+		if lokiDS.Desired == nil {
+			t.Fatalf("expected the loki GrafanaDatasource to be desired when LokiRef is set")
+		}
+
+		url, _, _ := unstructured.NestedString(lokiDS.Desired.Object, "spec", "datasource", "url")
+		if want := "http://custom-loki-query-frontend-http.team-a.svc:3100"; want != url {
+			t.Fatalf("expected datasource url %q, got %q", want, url)
+		}
+
+		dsType, _, _ := unstructured.NestedString(lokiDS.Desired.Object, "spec", "datasource", "type")
+		if dsType != "loki" {
+			t.Fatalf("expected datasource type %q, got %q", "loki", dsType)
+		}
+
+		uid, _, _ := unstructured.NestedString(lokiDS.Desired.Object, "spec", "uid")
+		if uid != LokiDatasourceUID {
+			t.Fatalf("expected uid %q, got %q", LokiDatasourceUID, uid)
 		}
 	})
 }

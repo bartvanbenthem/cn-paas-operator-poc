@@ -46,4 +46,7 @@ resources:
 - kafkacluster_admin_role.yaml
 - kafkacluster_editor_role.yaml
 - kafkacluster_viewer_role.yaml
+- lokiinstance_admin_role.yaml
+- lokiinstance_editor_role.yaml
+- lokiinstance_viewer_role.yaml
 

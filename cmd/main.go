@@ -226,6 +226,12 @@ func main() {
 		setupLog.Error(err, "Failed to create controller", "controller", controller.KafkaClusterControllerName)
 		os.Exit(1)
 	}
+	if err := controller.NewLokiInstanceReconciler(
+		mgr.GetClient(), mgr.GetScheme(), mgr.GetEventRecorder("lokiinstance-operator"),
+	).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", controller.LokiInstanceControllerName)
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

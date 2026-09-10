@@ -10,6 +10,7 @@ resources:
 - bases/paas.example.com_prometheusinstances.yaml
 - bases/paas.example.com_mongodbclusters.yaml
 - bases/paas.example.com_kafkaclusters.yaml
+- bases/paas.example.com_lokiinstances.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

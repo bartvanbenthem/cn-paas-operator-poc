@@ -1,0 +1,17 @@
+apiVersion: paas.example.com/v1alpha1
+kind: LokiInstance
+metadata:
+  labels:
+    app.kubernetes.io/name: paas-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: example-loki
+spec:
+  size: 1x.demo
+  storageClassName: standard
+  objectStorage:
+    # secretName must reference a pre-existing Secret in this same namespace,
+    # laid out the way the Loki Operator's own S3 object storage secret
+    # expects: bucketnames, endpoint, region (optional), access_key_id,
+    # access_key_secret. See the "Installing the Dependency Operators"
+    # section of the README for an example.
+    secretName: example-loki-s3

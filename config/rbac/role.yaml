@@ -73,6 +73,18 @@ rules:
   - update
   - watch
 - apiGroups:
+  - loki.grafana.com
+  resources:
+  - lokistacks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - monitoring.coreos.com
   resources:
   - podmonitors
@@ -103,6 +115,7 @@ rules:
   resources:
   - grafanainstances
   - kafkaclusters
+  - lokiinstances
   - mariadbclusters
   - mongodbclusters
   - postgresclusters
@@ -122,6 +135,7 @@ rules:
   resources:
   - grafanainstances/finalizers
   - kafkaclusters/finalizers
+  - lokiinstances/finalizers
   - mariadbclusters/finalizers
   - mongodbclusters/finalizers
   - postgresclusters/finalizers
@@ -135,6 +149,7 @@ rules:
   resources:
   - grafanainstances/status
   - kafkaclusters/status
+  - lokiinstances/status
   - mariadbclusters/status
   - mongodbclusters/status
   - postgresclusters/status

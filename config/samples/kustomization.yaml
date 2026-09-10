@@ -8,4 +8,5 @@ resources:
 - paas_v1alpha1_prometheusinstance.yaml
 - paas_v1alpha1_mongodbcluster.yaml
 - paas_v1alpha1_kafkacluster.yaml
+- paas_v1alpha1_lokiinstance.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples
