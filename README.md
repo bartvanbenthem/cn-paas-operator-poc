@@ -670,6 +670,23 @@ cert-manager `Issuer`/`Certificate` for its TLS, and that webhook's
 exist), the webhook never gets a valid serving cert, and every `LokiStack`
 create/update is then rejected by the API server outright.
 
+Even with cert-manager running, the `community` overlay at `operator/v0.11.0`
+has its own bug: the `Certificate` it installs writes its TLS secret as
+`loki-operator-webhook-server-cert`, but the manager `Deployment`'s
+`webhook-cert` volume hardcodes `loki-operator-controller-manager-service-cert`
+— the two names never match, so the pod sits in `ContainerCreating` with a
+`FailedMount` event (`secret "loki-operator-controller-manager-service-cert"
+not found`). Patch the `Certificate` to write to the name the `Deployment`
+actually expects:
+
+```sh
+kubectl patch certificate loki-operator-serving-cert -n loki-operator \
+  --type=merge -p '{"spec":{"secretName":"loki-operator-controller-manager-service-cert"}}'
+```
+
+cert-manager reissues into the new secret name within a few seconds and the
+pod's next mount attempt succeeds — no restart needed.
+
 If you'd rather avoid the kustomize/cert-manager route entirely, the
 operator is also published to
 [OperatorHub](https://operatorhub.io/operator/loki-operator) (package
