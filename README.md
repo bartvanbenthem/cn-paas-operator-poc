@@ -671,38 +671,25 @@ before those panels populate:
   create the `PrometheusInstance` in `prometheus-operator-system` itself. To
   keep it elsewhere, copy each `ServiceMonitor` into that namespace instead,
   pointing `spec.namespaceSelector` back at wherever its target Service
-  actually lives — `hack/promsetup.sh` does this: it reads the target
+  actually lives.
+
+- Scraping the kubelet's `/metrics/cadvisor` endpoint needs cluster-scoped
+  RBAC (`nodes/metrics`, `nodes/proxy`, `nodes/stats`) that this operator does
+  not grant — `scrapeRBACExtras` in `internal/prometheus` only creates a
+  namespace-scoped `Role` on `pods`/`services`/`endpoints`. Grant it
+  separately, against each `PrometheusInstance`'s own ServiceAccount (named
+  after the `PrometheusInstance`).
+
+  `hack/promsetup.sh` handles both of the above: it reads the target
   namespace from the current kubectl context, finds the real
   kube-state-metrics/kubelet `ServiceMonitor`s cluster-wide (no dependency on
-  chart version or release name), and copies each one that isn't already
-  visible:
+  chart version or release name) and copies each one that isn't already
+  visible, then creates the `nodes/metrics`/`nodes/proxy`/`nodes/stats`
+  `ClusterRole` and binds it to every `PrometheusInstance` found in that
+  namespace:
 
   ```sh
   ./hack/promsetup.sh
-  ```
-
-- Scraping the kubelet's `/metrics/cadvisor` endpoint needs cluster-scoped
-  RBAC (`nodes/metrics`, `nodes/proxy`) that this operator does not grant —
-  `scrapeRBACExtras` in `internal/prometheus` only creates a namespace-scoped
-  `Role` on `pods`/`services`/`endpoints`. Grant it separately, against the
-  `PrometheusInstance`'s own ServiceAccount (named after the
-  `PrometheusInstance`):
-
-  ```sh
-  kubectl apply -f - <<'EOF'
-  apiVersion: rbac.authorization.k8s.io/v1
-  kind: ClusterRole
-  metadata:
-    name: prometheusinstance-kubelet-cadvisor
-  rules:
-  - apiGroups: [""]
-    resources: ["nodes/metrics", "nodes/proxy", "nodes/stats"]
-    verbs: ["get"]
-  EOF
-
-  kubectl create clusterrolebinding <prometheusinstance-name>-kubelet-cadvisor \
-    --clusterrole=prometheusinstance-kubelet-cadvisor \
-    --serviceaccount=<prometheusinstance-namespace>:<prometheusinstance-name>
   ```
 
 ### Percona Server for MongoDB Operator (for `MongoDBCluster`)
