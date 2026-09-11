@@ -112,8 +112,25 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
+# Directory controller-runtime's webhook server watches by default
+# (webhook.Options{} leaves CertDir unset, which defaults here) when running
+# outside a Pod, i.e. via `go run`/`make run`.
+WEBHOOK_LOCAL_CERT_DIR ?= /tmp/k8s-webhook-server/serving-certs
+
+.PHONY: webhook-certs
+webhook-certs: ## Generate a self-signed cert for the webhook server when run locally via `make run`.
+	@if [ ! -f "$(WEBHOOK_LOCAL_CERT_DIR)/tls.crt" ]; then \
+		echo "Generating self-signed webhook cert in $(WEBHOOK_LOCAL_CERT_DIR)"; \
+		mkdir -p "$(WEBHOOK_LOCAL_CERT_DIR)"; \
+		openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
+			-keyout "$(WEBHOOK_LOCAL_CERT_DIR)/tls.key" \
+			-out "$(WEBHOOK_LOCAL_CERT_DIR)/tls.crt" \
+			-subj "/CN=webhook-service.paas-operator-system.svc" \
+			-addext "subjectAltName=DNS:host.docker.internal,DNS:localhost,IP:127.0.0.1"; \
+	fi
+
 .PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
+run: manifests generate fmt vet webhook-certs ## Run a controller from your host.
 	go run ./cmd/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.

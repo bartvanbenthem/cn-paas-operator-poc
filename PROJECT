@@ -36,6 +36,9 @@ resources:
   kind: GrafanaInstance
   path: github.com/bartvanbenthem/paas-operator/api/v1alpha1
   version: v1alpha1
+  webhooks:
+    validation: true
+    webhookVersion: v1
 - api:
     crdVersion: v1
     namespaced: true
@@ -63,6 +66,9 @@ resources:
   kind: PrometheusInstance
   path: github.com/bartvanbenthem/paas-operator/api/v1alpha1
   version: v1alpha1
+  webhooks:
+    validation: true
+    webhookVersion: v1
 - api:
     crdVersion: v1
     namespaced: true
@@ -90,6 +96,9 @@ resources:
   kind: LokiInstance
   path: github.com/bartvanbenthem/paas-operator/api/v1alpha1
   version: v1alpha1
+  webhooks:
+    validation: true
+    webhookVersion: v1
 - api:
     crdVersion: v1
     namespaced: true

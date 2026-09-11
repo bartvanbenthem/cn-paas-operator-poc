@@ -37,6 +37,7 @@ import (
 
 	paasv1alpha1 "github.com/bartvanbenthem/paas-operator/api/v1alpha1"
 	"github.com/bartvanbenthem/paas-operator/internal/controller"
+	webhookv1alpha1 "github.com/bartvanbenthem/paas-operator/internal/webhook/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -237,6 +238,27 @@ func main() {
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", controller.AlloyInstanceControllerName)
 		os.Exit(1)
+	}
+	// nolint:goconst
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err := webhookv1alpha1.SetupGrafanaInstanceWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "Failed to create webhook", "webhook", "GrafanaInstance")
+			os.Exit(1)
+		}
+	}
+	// nolint:goconst
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err := webhookv1alpha1.SetupPrometheusInstanceWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "Failed to create webhook", "webhook", "PrometheusInstance")
+			os.Exit(1)
+		}
+	}
+	// nolint:goconst
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err := webhookv1alpha1.SetupLokiInstanceWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "Failed to create webhook", "webhook", "LokiInstance")
+			os.Exit(1)
+		}
 	}
 	// +kubebuilder:scaffold:builder
 
