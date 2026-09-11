@@ -646,6 +646,65 @@ operator was built and tested against — both routes above install the
 matching `0.93.1` release (`kube-prometheus-stack` `89.2.0` pins
 `appVersion: v0.93.1`).
 
+**Container-level (CPU/memory/IO) panels on the CNPG and Kafka Grafana
+dashboards need more than the above.** The MariaDB, RabbitMQ, and MongoDB
+dashboards are self-contained — every panel reads from that workload's own
+exporter (`mysqld_exporter`, RabbitMQ's exporter, `mongodb_exporter`), reached
+through a `PodMonitor`/`ServiceMonitor` the owning operator creates in the
+same namespace as the `PrometheusInstance`. The CNPG and Strimzi Kafka
+dashboards instead source their utilization panels from cluster-wide
+infrastructure metrics — `container_cpu_usage_seconds_total` /
+`container_memory_working_set_bytes` (kubelet cAdvisor) and
+`kube_pod_container_resource_requests` / `kube_pod_container_status_ready`
+(kube-state-metrics) — which this project has no operator-owned path to.
+`kubeStateMetrics.enabled=true`/`nodeExporter.enabled=true` above do deploy
+kube-state-metrics and node-exporter, but two things still have to be true
+before those panels populate:
+
+- Their `ServiceMonitor`s (created by the chart, one in its own release
+  namespace for kube-state-metrics, one wherever `kubelet.namespace` points —
+  `kube-system` by default) must be visible to the `PrometheusInstance`
+  actually scraping the workload. `internal/prometheus` deliberately leaves
+  `serviceMonitorNamespaceSelector`/`podMonitorNamespaceSelector` unset (see
+  its package doc and Scope above), so a generated Prometheus only discovers
+  `ServiceMonitor`/`PodMonitor` objects in its *own* namespace. Simplest fix:
+  create the `PrometheusInstance` in `prometheus-operator-system` itself. To
+  keep it elsewhere, copy each `ServiceMonitor` into that namespace instead,
+  pointing `spec.namespaceSelector` back at wherever its target Service
+  actually lives — `hack/promsetup.sh` does this: it reads the target
+  namespace from the current kubectl context, finds the real
+  kube-state-metrics/kubelet `ServiceMonitor`s cluster-wide (no dependency on
+  chart version or release name), and copies each one that isn't already
+  visible:
+
+  ```sh
+  ./hack/promsetup.sh
+  ```
+
+- Scraping the kubelet's `/metrics/cadvisor` endpoint needs cluster-scoped
+  RBAC (`nodes/metrics`, `nodes/proxy`) that this operator does not grant —
+  `scrapeRBACExtras` in `internal/prometheus` only creates a namespace-scoped
+  `Role` on `pods`/`services`/`endpoints`. Grant it separately, against the
+  `PrometheusInstance`'s own ServiceAccount (named after the
+  `PrometheusInstance`):
+
+  ```sh
+  kubectl apply -f - <<'EOF'
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: prometheusinstance-kubelet-cadvisor
+  rules:
+  - apiGroups: [""]
+    resources: ["nodes/metrics", "nodes/proxy", "nodes/stats"]
+    verbs: ["get"]
+  EOF
+
+  kubectl create clusterrolebinding <prometheusinstance-name>-kubelet-cadvisor \
+    --clusterrole=prometheusinstance-kubelet-cadvisor \
+    --serviceaccount=<prometheusinstance-namespace>:<prometheusinstance-name>
+  ```
+
 ### Percona Server for MongoDB Operator (for `MongoDBCluster`)
 
 Percona ships CRDs and operator as two separate charts — install both:
