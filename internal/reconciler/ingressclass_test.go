@@ -40,14 +40,18 @@ import (
 // spec.ingress.ingressClassName.
 type testIngressAdapter struct{}
 
-func (testIngressAdapter) GVK() schema.GroupVersionKind         { return schema.GroupVersionKind{Version: "v1", Kind: "ConfigMap"} }
-func (testIngressAdapter) TargetName(crName string) string      { return crName }
-func (testIngressAdapter) ObjectKind() string                   { return "Test" }
-func (testIngressAdapter) FieldManager() string                 { return "test" }
+func (testIngressAdapter) GVK() schema.GroupVersionKind {
+	return schema.GroupVersionKind{Version: "v1", Kind: "ConfigMap"}
+}
+func (testIngressAdapter) TargetName(crName string) string { return crName }
+func (testIngressAdapter) ObjectKind() string              { return "Test" }
+func (testIngressAdapter) FieldManager() string            { return "test" }
 func (testIngressAdapter) BuildManifest(_ *corev1.ConfigMap, _, _, _ string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{}
 }
-func (testIngressAdapter) ExtractStatus(_ *unstructured.Unstructured) TargetStatus { return TargetStatus{} }
+func (testIngressAdapter) ExtractStatus(_ *unstructured.Unstructured) TargetStatus {
+	return TargetStatus{}
+}
 func (testIngressAdapter) ApplyStatus(_ *corev1.ConfigMap, _ string, _ TargetStatus) string {
 	return ""
 }
