@@ -617,8 +617,8 @@ helm upgrade --install prometheus-operator prometheus-community/kube-prometheus-
   --set prometheus.enabled=false \
   --set alertmanager.enabled=false \
   --set grafana.enabled=false \
-  --set kubeStateMetrics.enabled=false \
-  --set nodeExporter.enabled=false
+  --set kubeStateMetrics.enabled=true \
+  --set nodeExporter.enabled=true
 ```
 
 `kube-prometheus-stack` is the community-maintained chart for the
