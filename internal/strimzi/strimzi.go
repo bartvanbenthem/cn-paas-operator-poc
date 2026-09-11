@@ -67,6 +67,11 @@ const (
 	// what this package's PodMonitor selects on.
 	clusterLabelKey = "strimzi.io/cluster"
 
+	// nameLabelKey is the Strimzi-applied label identifying a pod's owning
+	// component (value "<cluster>-kafka" for every broker/controller pod),
+	// which dashboards/cluster.json's JVM/disk panels filter on.
+	nameLabelKey = "strimzi.io/name"
+
 	// metricsPort is the fixed port the Strimzi Metrics Reporter listens on.
 	// Reserved by Strimzi itself -- its own listener port schema explicitly
 	// excludes 9404 (and 9999, used for JMX) from the range Kafka listeners
@@ -270,6 +275,16 @@ func (Adapter) ExtraResources(cr *paasv1alpha1.KafkaCluster, targetName, namespa
 		"selector": map[string]any{
 			"matchLabels": map[string]any{clusterLabelKey: targetName},
 		},
+		// strimziMetricsReporter's own output carries no cluster/pod identity
+		// labels (unlike the old JMX-exporter recipe's relabeled
+		// strimzi_io_cluster/strimzi_io_name), so podTargetLabels copies the
+		// pod's own strimzi.io/cluster and strimzi.io/name labels onto every
+		// scraped series -- Prometheus sanitizes them to strimzi_io_cluster/
+		// strimzi_io_name, which is what dashboards/cluster.json's variables
+		// and panel queries filter on. Per-pod identity (formerly the JMX
+		// recipe's kubernetes_pod_name) comes for free from Prometheus's own
+		// auto-attached pod label -- no relabeling needed for that one.
+		"podTargetLabels": []any{clusterLabelKey, nameLabelKey},
 		"podMetricsEndpoints": []any{
 			map[string]any{"targetPort": int64(metricsPort)},
 		},
