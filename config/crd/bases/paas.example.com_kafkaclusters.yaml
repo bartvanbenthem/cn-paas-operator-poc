@@ -70,10 +70,13 @@ spec:
                     type: object
                   type:
                     default: LoadBalancer
-                    description: type is the Service type to create.
+                    description: |-
+                      type is the Service type to create. LoadBalancer is the only
+                      supported value: this operator's clusters run MetalLB with
+                      BGP-advertised address pools, so a NodePort Service would never be
+                      reachable from outside the cluster.
                     enum:
                     - LoadBalancer
-                    - NodePort
                     type: string
                 type: object
               monitoring:

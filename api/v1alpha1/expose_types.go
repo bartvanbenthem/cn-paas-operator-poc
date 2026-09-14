@@ -51,14 +51,17 @@ type IngressSpec struct {
 }
 
 // ServiceExposeSpec exposes a resource's primary TCP endpoint outside the
-// cluster via a Service of type LoadBalancer or NodePort. Shared across
-// every resource kind that speaks a raw TCP protocol rather than HTTP
-// (PostgresCluster, MariaDBCluster, ValkeyCluster) -- see each spec's own
-// doc comment for whether it's applied as a field on the underlying vendor
-// object or as a separate Service this operator manages.
+// cluster via a Service of type LoadBalancer. Shared across every resource
+// kind that speaks a raw TCP protocol rather than HTTP (PostgresCluster,
+// MariaDBCluster, ValkeyCluster) -- see each spec's own doc comment for
+// whether it's applied as a field on the underlying vendor object or as a
+// separate Service this operator manages.
 type ServiceExposeSpec struct {
-	// type is the Service type to create.
-	// +kubebuilder:validation:Enum=LoadBalancer;NodePort
+	// type is the Service type to create. LoadBalancer is the only
+	// supported value: this operator's clusters run MetalLB with
+	// BGP-advertised address pools, so a NodePort Service would never be
+	// reachable from outside the cluster.
+	// +kubebuilder:validation:Enum=LoadBalancer
 	// +kubebuilder:default=LoadBalancer
 	// +optional
 	Type corev1.ServiceType `json:"type,omitempty"`
