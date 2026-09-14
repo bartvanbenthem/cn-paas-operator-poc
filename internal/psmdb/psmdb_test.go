@@ -83,6 +83,16 @@ func TestBuildManifestReplsetMapping(t *testing.T) {
 	})
 }
 
+func TestBuildManifestEnablesVolumeScaling(t *testing.T) {
+	cr := &paasv1alpha1.MongoDBCluster{Spec: baseSpec()}
+	u := Adapter{}.BuildManifest(cr, "test", "default", "test")
+
+	enabled, found, _ := unstructured.NestedBool(u.Object, "spec", "storageScaling", "enableVolumeScaling")
+	if !found || !enabled {
+		t.Fatalf("expected spec.storageScaling.enableVolumeScaling=true, got found=%v value=%v", found, enabled)
+	}
+}
+
 func TestBuildManifestSecretNameIsKindScoped(t *testing.T) {
 	cr := &paasv1alpha1.MongoDBCluster{Spec: baseSpec()}
 	u := Adapter{}.BuildManifest(cr, "test", "default", "test")

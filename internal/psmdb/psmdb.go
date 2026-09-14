@@ -280,6 +280,12 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.MongoDBCluster, name, namespace, o
 		"secrets": map[string]any{
 			"users": secretsName,
 		},
+		// enableVolumeScaling is off by default in the Percona operator; without
+		// it, growing MongoDBClusterSpec.Storage.Size updates this CR but the
+		// Percona operator never resizes the underlying PVC.
+		"storageScaling": map[string]any{
+			"enableVolumeScaling": true,
+		},
 	}
 
 	u := &unstructured.Unstructured{}
