@@ -1,0 +1,202 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: lokiinstances.paas.cncp.nl
+spec:
+  group: paas.cncp.nl
+  names:
+    kind: LokiInstance
+    listKind: LokiInstanceList
+    plural: lokiinstances
+    shortNames:
+    - loki
+    singular: lokiinstance
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.size
+      name: Size
+      type: string
+    - jsonPath: .status.ready
+      name: Ready
+      type: boolean
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: LokiInstance is the Schema for the lokiinstances API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of LokiInstance
+            properties:
+              objectStorage:
+                description: |-
+                  objectStorage configures the S3-compatible bucket the LokiStack reads
+                  and writes chunks and the index to.
+                properties:
+                  secretName:
+                    description: |-
+                      secretName names a Secret, in the same namespace, laid out the way the
+                      Loki Operator's own S3 object storage secret expects: a "bucketnames"
+                      key (comma-separated if more than one), an "endpoint" key (a full
+                      "https://..." URL -- AWS S3 itself expects
+                      "https://s3.<region>.amazonaws.com"), an optional "region" key
+                      (required for AWS S3, optional for other S3-compatible endpoints),
+                      and "access_key_id"/"access_key_secret" keys. Must already exist --
+                      this operator never creates it or reads its contents, only references
+                      it by name, so a wrong or missing Secret surfaces as the underlying
+                      LokiStack's own "MissingObjectStorageSecret"/"InvalidObjectStorageSecret"
+                      Degraded condition rather than a failure here.
+                    minLength: 1
+                    type: string
+                required:
+                - secretName
+                type: object
+              size:
+                default: 1x.demo
+                description: |-
+                  size selects one of the Loki Operator's supported deployment scale-out
+                  sizes, which determines replica counts and resource requests for every
+                  LokiStack component (distributor, ingester, querier, ...). Defaults to
+                  "1x.demo", the smallest, single-replica-per-component size meant for
+                  evaluation/development, not production use.
+                enum:
+                - 1x.demo
+                - 1x.pico
+                - 1x.extra-small
+                - 1x.small
+                - 1x.medium
+                type: string
+              storageClassName:
+                description: |-
+                  storageClassName is the StorageClass used for the PVCs the Loki
+                  Operator provisions for its stateful components (ingester WAL, index
+                  gateway cache, compactor working directory, ...). The Loki Operator
+                  has no ephemeral-storage fallback the way the Prometheus Operator/
+                  grafana-operator do, so this is required.
+                minLength: 1
+                type: string
+            required:
+            - objectStorage
+            - storageClassName
+            type: object
+          status:
+            description: status defines the observed state of LokiInstance
+            properties:
+              conditions:
+                description: |-
+                  conditions represent the current state of the LokiInstance resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Standard condition types include:
+                  - "Available": the resource is fully functional
+                  - "Progressing": the resource is being created or updated
+                  - "Degraded": the resource failed to reach or maintain its desired state
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              message:
+                description: message is a short human-readable summary of the current
+                  state.
+                type: string
+              phase:
+                description: |-
+                  phase is the reason of the underlying LokiStack's most recently
+                  observed condition (Ready, or whichever of Pending/Failed/Degraded is
+                  currently true; the Loki Operator has no separate status.phase field).
+                type: string
+              ready:
+                description: |-
+                  ready is true once the underlying LokiStack reports its "Ready"
+                  condition as True.
+                type: boolean
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
