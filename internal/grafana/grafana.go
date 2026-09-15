@@ -57,6 +57,10 @@ const (
 	// persistentVolumeClaim) BuildManifest assembles below.
 	specKey = "spec"
 
+	// nameKey is the "name" map key shared by the ingress backend service
+	// reference and the Prometheus/Loki datasource blocks below.
+	nameKey = "name"
+
 	// ScopeLabel is applied to every Grafana this operator creates, and
 	// matched by the instanceSelector of every GrafanaDatasource/
 	// GrafanaDashboard created in the same namespace -- by this package's
@@ -194,8 +198,8 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.GrafanaInstance, name, namespace, 
 								"pathType": "Prefix",
 								"backend": map[string]any{
 									"service": map[string]any{
-										"name": ServiceName(name),
-										"port": map[string]any{"number": int64(WebPort)},
+										nameKey: ServiceName(name),
+										"port":  map[string]any{"number": int64(WebPort)},
 									},
 								},
 							},
@@ -299,7 +303,7 @@ func (Adapter) ExtraResources(cr *paasv1alpha1.GrafanaInstance, targetName, name
 		"instanceSelector": InstanceSelector(namespace),
 		"uid":              DatasourceUID,
 		"datasource": map[string]any{
-			"name":      "Prometheus",
+			nameKey:     "Prometheus",
 			"type":      "prometheus",
 			"access":    "proxy",
 			"url":       prometheusURL,
@@ -327,7 +331,7 @@ func (Adapter) ExtraResources(cr *paasv1alpha1.GrafanaInstance, targetName, name
 		"instanceSelector": InstanceSelector(namespace),
 		"uid":              LokiDatasourceUID,
 		"datasource": map[string]any{
-			"name":   "Loki",
+			nameKey:  "Loki",
 			"type":   "loki",
 			"access": "proxy",
 			"url":    lokiURL,

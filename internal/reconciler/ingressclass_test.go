@@ -30,6 +30,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+const (
+	testNamespace           = "default"
+	ingressRequestedDataKey = "ingressRequested"
+)
+
 // testIngressAdapter is a minimal Adapter exercising only
 // IngressClassDefaultingAdapter -- it uses *corev1.ConfigMap as a stand-in
 // CR (a real, already-registered type) purely so defaultIngressClass/
@@ -57,7 +62,7 @@ func (testIngressAdapter) ApplyStatus(_ *corev1.ConfigMap, _ string, _ TargetSta
 }
 
 func (testIngressAdapter) RequestedIngressClassName(cr *corev1.ConfigMap) (string, bool) {
-	if cr.Data["ingressRequested"] != "true" {
+	if cr.Data[ingressRequestedDataKey] != annotationTrue {
 		return "", false
 	}
 	return cr.Data["ingressClassName"], true
@@ -86,7 +91,7 @@ func newFakeReconciler(t *testing.T, objs ...client.Object) *GenericReconciler[c
 func defaultIngressClassObj(name string, isDefault bool) *networkingv1.IngressClass {
 	ic := &networkingv1.IngressClass{ObjectMeta: metav1.ObjectMeta{Name: name}}
 	if isDefault {
-		ic.Annotations = map[string]string{defaultIngressClassAnnotation: "true"}
+		ic.Annotations = map[string]string{defaultIngressClassAnnotation: annotationTrue}
 	}
 	return ic
 }
@@ -96,7 +101,7 @@ func TestDefaultIngressClass(t *testing.T) {
 
 	t.Run("no Ingress requested leaves the CR untouched", func(t *testing.T) {
 		r := newFakeReconciler(t, defaultIngressClassObj("haproxy", true))
-		cr := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "cr", Namespace: "default"}}
+		cr := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "cr", Namespace: testNamespace}}
 
 		if err := r.defaultIngressClass(ctx, cr); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -109,8 +114,8 @@ func TestDefaultIngressClass(t *testing.T) {
 	t.Run("Ingress requested with an explicit class is left alone", func(t *testing.T) {
 		r := newFakeReconciler(t, defaultIngressClassObj("haproxy", true))
 		cr := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{Name: "cr", Namespace: "default"},
-			Data:       map[string]string{"ingressRequested": "true", "ingressClassName": "nginx"},
+			ObjectMeta: metav1.ObjectMeta{Name: "cr", Namespace: testNamespace},
+			Data:       map[string]string{ingressRequestedDataKey: annotationTrue, "ingressClassName": "nginx"},
 		}
 
 		if err := r.defaultIngressClass(ctx, cr); err != nil {
@@ -124,8 +129,8 @@ func TestDefaultIngressClass(t *testing.T) {
 	t.Run("Ingress requested with an unset class resolves the cluster's default", func(t *testing.T) {
 		r := newFakeReconciler(t, defaultIngressClassObj("haproxy", true))
 		cr := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{Name: "cr", Namespace: "default"},
-			Data:       map[string]string{"ingressRequested": "true"},
+			ObjectMeta: metav1.ObjectMeta{Name: "cr", Namespace: testNamespace},
+			Data:       map[string]string{ingressRequestedDataKey: annotationTrue},
 		}
 
 		if err := r.defaultIngressClass(ctx, cr); err != nil {
@@ -139,8 +144,8 @@ func TestDefaultIngressClass(t *testing.T) {
 	t.Run("no default IngressClass in the cluster leaves the class unset", func(t *testing.T) {
 		r := newFakeReconciler(t, defaultIngressClassObj("haproxy", false))
 		cr := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{Name: "cr", Namespace: "default"},
-			Data:       map[string]string{"ingressRequested": "true"},
+			ObjectMeta: metav1.ObjectMeta{Name: "cr", Namespace: testNamespace},
+			Data:       map[string]string{ingressRequestedDataKey: annotationTrue},
 		}
 
 		if err := r.defaultIngressClass(ctx, cr); err != nil {
@@ -154,8 +159,8 @@ func TestDefaultIngressClass(t *testing.T) {
 	t.Run("more than one default IngressClass is ambiguous and resolves nothing", func(t *testing.T) {
 		r := newFakeReconciler(t, defaultIngressClassObj("haproxy", true), defaultIngressClassObj("nginx", true))
 		cr := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{Name: "cr", Namespace: "default"},
-			Data:       map[string]string{"ingressRequested": "true"},
+			ObjectMeta: metav1.ObjectMeta{Name: "cr", Namespace: testNamespace},
+			Data:       map[string]string{ingressRequestedDataKey: annotationTrue},
 		}
 
 		if err := r.defaultIngressClass(ctx, cr); err != nil {

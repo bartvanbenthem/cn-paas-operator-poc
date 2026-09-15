@@ -24,6 +24,8 @@ import (
 	paasv1alpha1 "github.com/bartvanbenthem/paas-operator/api/v1alpha1"
 )
 
+const testHost = "grafana.example.com"
+
 func TestBuildManifestIngress(t *testing.T) {
 	t.Run("unset leaves spec.ingress unset", func(t *testing.T) {
 		cr := &paasv1alpha1.GrafanaInstance{Spec: paasv1alpha1.GrafanaInstanceSpec{Replicas: 1}}
@@ -39,7 +41,7 @@ func TestBuildManifestIngress(t *testing.T) {
 			Spec: paasv1alpha1.GrafanaInstanceSpec{
 				Replicas: 1,
 				Ingress: &paasv1alpha1.IngressSpec{
-					Host:             "grafana.example.com",
+					Host:             testHost,
 					IngressClassName: "nginx",
 					TLSSecretName:    "grafana-tls",
 					Annotations:      map[string]string{"cert-manager.io/cluster-issuer": "letsencrypt"},
@@ -53,7 +55,7 @@ func TestBuildManifestIngress(t *testing.T) {
 			t.Fatalf("expected exactly one ingress rule, found=%v len=%d", found, len(rules))
 		}
 		rule, _ := rules[0].(map[string]any)
-		if host, _, _ := unstructured.NestedString(rule, "host"); host != "grafana.example.com" {
+		if host, _, _ := unstructured.NestedString(rule, "host"); host != testHost {
 			t.Fatalf("expected host grafana.example.com, got %q", host)
 		}
 
@@ -104,7 +106,7 @@ func TestRequestedIngressClassName(t *testing.T) {
 
 	t.Run("Ingress set with an unset class reports requested with an empty class", func(t *testing.T) {
 		cr := &paasv1alpha1.GrafanaInstance{Spec: paasv1alpha1.GrafanaInstanceSpec{
-			Ingress: &paasv1alpha1.IngressSpec{Host: "grafana.example.com"},
+			Ingress: &paasv1alpha1.IngressSpec{Host: testHost},
 		}}
 		class, requested := Adapter{}.RequestedIngressClassName(cr)
 		if !requested || class != "" {
@@ -114,7 +116,7 @@ func TestRequestedIngressClassName(t *testing.T) {
 
 	t.Run("SetIngressClassName sets it in place for BuildManifest to pick up", func(t *testing.T) {
 		cr := &paasv1alpha1.GrafanaInstance{Spec: paasv1alpha1.GrafanaInstanceSpec{
-			Ingress: &paasv1alpha1.IngressSpec{Host: "grafana.example.com"},
+			Ingress: &paasv1alpha1.IngressSpec{Host: testHost},
 		}}
 		Adapter{}.SetIngressClassName(cr, "haproxy")
 

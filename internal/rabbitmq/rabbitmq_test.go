@@ -26,10 +26,15 @@ import (
 	"github.com/bartvanbenthem/paas-operator/internal/ingress"
 )
 
+const (
+	testStorageSize = "1Gi"
+	testHost        = "rabbitmq.example.com"
+)
+
 func TestExtraResourcesIngress(t *testing.T) {
 	baseSpec := paasv1alpha1.RabbitMQClusterSpec{
 		Replicas: 1,
-		Storage:  paasv1alpha1.StorageSpec{Size: "1Gi"},
+		Storage:  paasv1alpha1.StorageSpec{Size: testStorageSize},
 	}
 
 	t.Run("unset returns an absent entry", func(t *testing.T) {
@@ -52,7 +57,7 @@ func TestExtraResourcesIngress(t *testing.T) {
 
 	t.Run("set routes to the RabbitmqCluster's own Service on the management port", func(t *testing.T) {
 		spec := baseSpec
-		spec.Ingress = &paasv1alpha1.IngressSpec{Host: "rabbitmq.example.com"}
+		spec.Ingress = &paasv1alpha1.IngressSpec{Host: testHost}
 		cr := &paasv1alpha1.RabbitMQCluster{Spec: spec}
 
 		extras := Adapter{}.ExtraResources(cr, "test", "default", "test")
@@ -79,7 +84,7 @@ func TestExtraResourcesIngress(t *testing.T) {
 func TestRequestedIngressClassName(t *testing.T) {
 	baseSpec := paasv1alpha1.RabbitMQClusterSpec{
 		Replicas: 1,
-		Storage:  paasv1alpha1.StorageSpec{Size: "1Gi"},
+		Storage:  paasv1alpha1.StorageSpec{Size: testStorageSize},
 	}
 
 	t.Run("unset Ingress reports not requested", func(t *testing.T) {
@@ -92,7 +97,7 @@ func TestRequestedIngressClassName(t *testing.T) {
 
 	t.Run("Ingress set with an unset class reports requested with an empty class", func(t *testing.T) {
 		spec := baseSpec
-		spec.Ingress = &paasv1alpha1.IngressSpec{Host: "rabbitmq.example.com"}
+		spec.Ingress = &paasv1alpha1.IngressSpec{Host: testHost}
 		cr := &paasv1alpha1.RabbitMQCluster{Spec: spec}
 		class, requested := Adapter{}.RequestedIngressClassName(cr)
 		if !requested || class != "" {
@@ -102,7 +107,7 @@ func TestRequestedIngressClassName(t *testing.T) {
 
 	t.Run("SetIngressClassName sets it in place for ExtraResources to pick up", func(t *testing.T) {
 		spec := baseSpec
-		spec.Ingress = &paasv1alpha1.IngressSpec{Host: "rabbitmq.example.com"}
+		spec.Ingress = &paasv1alpha1.IngressSpec{Host: testHost}
 		cr := &paasv1alpha1.RabbitMQCluster{Spec: spec}
 		Adapter{}.SetIngressClassName(cr, "haproxy")
 
@@ -117,7 +122,7 @@ func TestRequestedIngressClassName(t *testing.T) {
 func TestBuildManifestExpose(t *testing.T) {
 	baseSpec := paasv1alpha1.RabbitMQClusterSpec{
 		Replicas: 1,
-		Storage:  paasv1alpha1.StorageSpec{Size: "1Gi"},
+		Storage:  paasv1alpha1.StorageSpec{Size: testStorageSize},
 	}
 
 	t.Run("unset leaves spec.service unset", func(t *testing.T) {
@@ -153,7 +158,7 @@ func TestBuildManifestExpose(t *testing.T) {
 func TestExtraResourcesMonitoring(t *testing.T) {
 	baseSpec := paasv1alpha1.RabbitMQClusterSpec{
 		Replicas: 1,
-		Storage:  paasv1alpha1.StorageSpec{Size: "1Gi"},
+		Storage:  paasv1alpha1.StorageSpec{Size: testStorageSize},
 	}
 
 	t.Run("absent when monitoring is disabled", func(t *testing.T) {

@@ -158,6 +158,11 @@ spec:
                   users:
                     type: string
                 type: object
+              storageScaling:
+                properties:
+                  enableVolumeScaling:
+                    type: boolean
+                type: object
             type: object
           status:
             properties:

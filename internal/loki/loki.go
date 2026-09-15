@@ -107,6 +107,11 @@ const (
 	lokiStackNameLabel      = "lokistack"
 	lokiStackManagedByValue = "lokistack-controller"
 
+	// managedByLabelKey is the standard "app.kubernetes.io/managed-by" label
+	// key, shared by the Loki Operator's own PVC label selector above and the
+	// labels this package sets on the objects it creates directly.
+	managedByLabelKey = "app.kubernetes.io/managed-by"
+
 	// lokiFSGroup is the fixed non-root UID/GID (10001) baked into the Loki
 	// Operator's own grafana/loki container image (its Dockerfile sets
 	// "USER 10001"). The Loki Operator's generated StatefulSets never set
@@ -231,9 +236,9 @@ func (Adapter) ExtraResources(_ *paasv1alpha1.LokiInstance, targetName, namespac
 // already get for free from their own vendor operator.
 func (Adapter) PVCLabelSelector(_ *paasv1alpha1.LokiInstance, targetName string) map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/name":       lokiStackNameLabel,
-		"app.kubernetes.io/instance":   targetName,
-		"app.kubernetes.io/managed-by": lokiStackManagedByValue,
+		"app.kubernetes.io/name":     lokiStackNameLabel,
+		"app.kubernetes.io/instance": targetName,
+		managedByLabelKey:            lokiStackManagedByValue,
 	}
 }
 
@@ -264,8 +269,8 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.LokiInstance, name, namespace, own
 	u.SetName(name)
 	u.SetNamespace(namespace)
 	u.SetLabels(map[string]string{
-		"app.kubernetes.io/managed-by": FieldManager,
-		"paas.cncp.nl/owner":           ownerName,
+		managedByLabelKey:    FieldManager,
+		"paas.cncp.nl/owner": ownerName,
 	})
 	u.Object["spec"] = lokiSpec
 

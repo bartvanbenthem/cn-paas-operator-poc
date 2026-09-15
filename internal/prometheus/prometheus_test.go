@@ -27,6 +27,9 @@ import (
 // testName is the CR/target name used throughout this file's tests.
 const testName = "test"
 
+// testHost is the Ingress host used throughout this file's tests.
+const testHost = "prometheus.example.com"
+
 func TestBuildManifestNamespaceScoped(t *testing.T) {
 	cr := &paasv1alpha1.PrometheusInstance{
 		Spec: paasv1alpha1.PrometheusInstanceSpec{Replicas: 1},
@@ -102,7 +105,7 @@ func TestExtraResourcesIngress(t *testing.T) {
 		cr := &paasv1alpha1.PrometheusInstance{
 			Spec: paasv1alpha1.PrometheusInstanceSpec{
 				Replicas: 1,
-				Ingress:  &paasv1alpha1.IngressSpec{Host: "prometheus.example.com"},
+				Ingress:  &paasv1alpha1.IngressSpec{Host: testHost},
 			},
 		}
 
@@ -130,7 +133,7 @@ func TestExtraResourcesIngress(t *testing.T) {
 		}
 		rule, _ := rules[0].(map[string]any)
 		host, _, _ := unstructured.NestedString(rule, "host")
-		if host != "prometheus.example.com" {
+		if host != testHost {
 			t.Fatalf("expected host prometheus.example.com, got %q", host)
 		}
 
@@ -154,7 +157,7 @@ func TestRequestedIngressClassName(t *testing.T) {
 
 	t.Run("Ingress set with an unset class reports requested with an empty class", func(t *testing.T) {
 		cr := &paasv1alpha1.PrometheusInstance{Spec: paasv1alpha1.PrometheusInstanceSpec{
-			Ingress: &paasv1alpha1.IngressSpec{Host: "prometheus.example.com"},
+			Ingress: &paasv1alpha1.IngressSpec{Host: testHost},
 		}}
 		class, requested := Adapter{}.RequestedIngressClassName(cr)
 		if !requested || class != "" {
@@ -165,7 +168,7 @@ func TestRequestedIngressClassName(t *testing.T) {
 	t.Run("SetIngressClassName sets it in place for ExtraResources to pick up", func(t *testing.T) {
 		cr := &paasv1alpha1.PrometheusInstance{Spec: paasv1alpha1.PrometheusInstanceSpec{
 			Replicas: 1,
-			Ingress:  &paasv1alpha1.IngressSpec{Host: "prometheus.example.com"},
+			Ingress:  &paasv1alpha1.IngressSpec{Host: testHost},
 		}}
 		Adapter{}.SetIngressClassName(cr, "haproxy")
 

@@ -124,9 +124,9 @@ func TestPVCLabelSelector(t *testing.T) {
 	got := Adapter{}.PVCLabelSelector(cr, "mystack")
 
 	want := map[string]string{
-		"app.kubernetes.io/name":       "lokistack",
-		"app.kubernetes.io/instance":   "mystack",
-		"app.kubernetes.io/managed-by": "lokistack-controller",
+		"app.kubernetes.io/name":     "lokistack",
+		"app.kubernetes.io/instance": "mystack",
+		managedByLabelKey:            lokiStackManagedByValue,
 	}
 	if len(got) != len(want) {
 		t.Fatalf("expected %d labels, got %d (%v)", len(want), len(got), got)

@@ -191,6 +191,10 @@ type IngressClassDefaultingAdapter[T any, PT ObjectPtr[T]] interface {
 // looks for.
 const defaultIngressClassAnnotation = "ingressclass.kubernetes.io/is-default-class"
 
+// annotationTrue is the string value defaultIngressClassAnnotation is set to
+// on the cluster's default IngressClass.
+const annotationTrue = "true"
+
 // GenericReconciler drives any paas CR type PT towards a matching,
 // same-named foreign target object (as described by Adapter) and mirrors
 // that object's status back onto the CR. This is the reconciliation logic
@@ -482,7 +486,7 @@ func (r *GenericReconciler[T, PT]) resolveDefaultIngressClass(ctx context.Contex
 	}
 	resolved := ""
 	for _, ic := range classes.Items {
-		if ic.Annotations[defaultIngressClassAnnotation] != "true" {
+		if ic.Annotations[defaultIngressClassAnnotation] != annotationTrue {
 			continue
 		}
 		if resolved != "" {
