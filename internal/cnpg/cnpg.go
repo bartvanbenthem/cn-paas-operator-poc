@@ -182,7 +182,7 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.PostgresCluster, name, namespace, 
 	u.SetNamespace(namespace)
 	u.SetLabels(map[string]string{
 		"app.kubernetes.io/managed-by": "postgrescluster-operator",
-		"paas.example.com/owner":       ownerName,
+		"paas.cncp.nl/owner":           ownerName,
 	})
 	u.Object["spec"] = clusterSpec
 
@@ -209,7 +209,7 @@ func (Adapter) ExtraResources(cr *paasv1alpha1.PostgresCluster, targetName, name
 	dashboard.SetNamespace(namespace)
 	dashboard.SetLabels(map[string]string{
 		"app.kubernetes.io/managed-by": FieldManager,
-		"paas.example.com/owner":       owner,
+		"paas.cncp.nl/owner":           owner,
 	})
 	dashboard.Object["spec"] = map[string]any{
 		"instanceSelector": grafana.InstanceSelector(namespace),

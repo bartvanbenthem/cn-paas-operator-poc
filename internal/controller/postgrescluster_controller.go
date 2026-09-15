@@ -37,9 +37,9 @@ type PostgresClusterReconciler = reconciler.GenericReconciler[paasv1alpha1.Postg
 // registering with the manager and in logs/events.
 const PostgresClusterControllerName = "postgrescluster"
 
-// +kubebuilder:rbac:groups=paas.example.com,resources=postgresclusters,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=paas.example.com,resources=postgresclusters/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=paas.example.com,resources=postgresclusters/finalizers,verbs=update
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=postgresclusters,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=postgresclusters/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=postgresclusters/finalizers,verbs=update
 // +kubebuilder:rbac:groups=postgresql.cnpg.io,resources=clusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=grafana.integreatly.org,resources=grafanadashboards,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch

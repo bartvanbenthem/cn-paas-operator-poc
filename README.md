@@ -3,7 +3,7 @@
 A meta operator, built with [kubebuilder](https://book.kubebuilder.io)/
 `controller-runtime`, that fronts other operators' large CRDs with small,
 opinionated ones of our own. Each vendor gets its own thin CRD under
-`paas.example.com/v1alpha1` — currently `PostgresCluster` (for
+`paas.cncp.nl/v1alpha1` — currently `PostgresCluster` (for
 [CloudNativePG](https://cloudnative-pg.io)), `ValkeyCluster` (for
 [valkey-io/valkey-operator](https://github.com/valkey-io/valkey-operator)),
 `GrafanaInstance` (for
@@ -26,7 +26,7 @@ instance from ~10 lines of YAML instead of having to understand the vendor's
 much larger spec.
 
 ```yaml
-apiVersion: paas.example.com/v1alpha1
+apiVersion: paas.cncp.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: example-db
@@ -38,7 +38,7 @@ spec:
     name: app
     owner: app
 ---
-apiVersion: paas.example.com/v1alpha1
+apiVersion: paas.cncp.nl/v1alpha1
 kind: ValkeyCluster
 metadata:
   name: example-cache
@@ -48,7 +48,7 @@ spec:
   persistence:
     size: 5Gi
 ---
-apiVersion: paas.example.com/v1alpha1
+apiVersion: paas.cncp.nl/v1alpha1
 kind: GrafanaInstance
 metadata:
   name: example-grafana
@@ -57,7 +57,7 @@ spec:
   persistence:
     size: 1Gi
 ---
-apiVersion: paas.example.com/v1alpha1
+apiVersion: paas.cncp.nl/v1alpha1
 kind: MariaDBCluster
 metadata:
   name: example-mariadb
@@ -69,7 +69,7 @@ spec:
     name: app
     owner: app
 ---
-apiVersion: paas.example.com/v1alpha1
+apiVersion: paas.cncp.nl/v1alpha1
 kind: RabbitMQCluster
 metadata:
   name: example-rabbitmq
@@ -78,7 +78,7 @@ spec:
   storage:
     size: 10Gi
 ---
-apiVersion: paas.example.com/v1alpha1
+apiVersion: paas.cncp.nl/v1alpha1
 kind: PrometheusInstance
 metadata:
   name: example-prometheus
@@ -88,7 +88,7 @@ spec:
   storage:
     size: 10Gi
 ---
-apiVersion: paas.example.com/v1alpha1
+apiVersion: paas.cncp.nl/v1alpha1
 kind: MongoDBCluster
 metadata:
   name: example-mongodb
@@ -97,7 +97,7 @@ spec:
   storage:
     size: 10Gi
 ---
-apiVersion: paas.example.com/v1alpha1
+apiVersion: paas.cncp.nl/v1alpha1
 kind: KafkaCluster
 metadata:
   name: example-kafka
@@ -106,7 +106,7 @@ spec:
   storage:
     size: 100Gi
 ---
-apiVersion: paas.example.com/v1alpha1
+apiVersion: paas.cncp.nl/v1alpha1
 kind: LokiInstance
 metadata:
   name: example-loki

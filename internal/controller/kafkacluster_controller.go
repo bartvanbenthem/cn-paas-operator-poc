@@ -38,9 +38,9 @@ type KafkaClusterReconciler = reconciler.GenericReconciler[paasv1alpha1.KafkaClu
 // registering with the manager and in logs/events.
 const KafkaClusterControllerName = "kafkacluster"
 
-// +kubebuilder:rbac:groups=paas.example.com,resources=kafkaclusters,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=paas.example.com,resources=kafkaclusters/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=paas.example.com,resources=kafkaclusters/finalizers,verbs=update
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=kafkaclusters,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=kafkaclusters/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=kafkaclusters/finalizers,verbs=update
 // +kubebuilder:rbac:groups=kafka.strimzi.io,resources=kafkas,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kafka.strimzi.io,resources=kafkanodepools,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;watch;create;update;patch;delete

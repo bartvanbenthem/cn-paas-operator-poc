@@ -38,9 +38,9 @@ type PrometheusInstanceReconciler = reconciler.GenericReconciler[paasv1alpha1.Pr
 // registering with the manager and in logs/events.
 const PrometheusInstanceControllerName = "prometheusinstance"
 
-// +kubebuilder:rbac:groups=paas.example.com,resources=prometheusinstances,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=paas.example.com,resources=prometheusinstances/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=paas.example.com,resources=prometheusinstances/finalizers,verbs=update
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=prometheusinstances,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=prometheusinstances/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=prometheusinstances/finalizers,verbs=update
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=prometheuses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete

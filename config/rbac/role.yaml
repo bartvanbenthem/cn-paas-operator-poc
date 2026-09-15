@@ -132,7 +132,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - paas.example.com
+  - paas.cncp.nl
   resources:
   - alloyinstances
   - grafanainstances
@@ -153,7 +153,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - paas.example.com
+  - paas.cncp.nl
   resources:
   - alloyinstances/finalizers
   - grafanainstances/finalizers
@@ -168,7 +168,7 @@ rules:
   verbs:
   - update
 - apiGroups:
-  - paas.example.com
+  - paas.cncp.nl
   resources:
   - alloyinstances/status
   - grafanainstances/status

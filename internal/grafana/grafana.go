@@ -67,7 +67,7 @@ const (
 	// internal/prometheus), so the namespace name alone is a sufficient
 	// scope key: it lets every building block target "the Grafana in my
 	// namespace" without a client lookup or an explicit cross-reference.
-	ScopeLabel = "dashboards.paas.example.com/scope"
+	ScopeLabel = "dashboards.paas.cncp.nl/scope"
 
 	// DatasourceUID is the fixed UID given to the GrafanaDatasource this
 	// operator creates for a GrafanaInstance. Every GrafanaDashboard's
@@ -266,7 +266,7 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.GrafanaInstance, name, namespace, 
 	u.SetNamespace(namespace)
 	u.SetLabels(map[string]string{
 		"app.kubernetes.io/managed-by": FieldManager,
-		"paas.example.com/owner":       ownerName,
+		"paas.cncp.nl/owner":           ownerName,
 		ScopeLabel:                     namespace,
 	})
 	u.Object["spec"] = grafanaSpec
@@ -283,7 +283,7 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.GrafanaInstance, name, namespace, 
 func (Adapter) ExtraResources(cr *paasv1alpha1.GrafanaInstance, targetName, namespace, owner string) []reconciler.ExtraResource {
 	labels := map[string]string{
 		"app.kubernetes.io/managed-by": FieldManager,
-		"paas.example.com/owner":       owner,
+		"paas.cncp.nl/owner":           owner,
 	}
 
 	prometheusURL := fmt.Sprintf("http://%s.%s.svc:%d", prometheus.ServiceName(cr.Spec.PrometheusRef), namespace, prometheus.WebPort)

@@ -1,4 +1,4 @@
-apiVersion: paas.example.com/v1alpha1
+apiVersion: paas.cncp.nl/v1alpha1
 kind: AlloyInstance
 metadata:
   labels:

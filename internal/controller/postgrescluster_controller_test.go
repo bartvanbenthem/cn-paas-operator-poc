@@ -114,7 +114,7 @@ var _ = Describe("PostgresCluster Controller", func() {
 
 			var withFinalizer paasv1alpha1.PostgresCluster
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &withFinalizer)).To(Succeed())
-			Expect(withFinalizer.Finalizers).To(ContainElement("paas.example.com/cleanup"))
+			Expect(withFinalizer.Finalizers).To(ContainElement("paas.cncp.nl/cleanup"))
 
 			By("reconciling again to apply the CNPG Cluster and patch status")
 			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})

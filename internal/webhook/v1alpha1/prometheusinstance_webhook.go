@@ -39,7 +39,7 @@ func SetupPrometheusInstanceWebhookWithManager(mgr ctrl.Manager) error {
 }
 
 // NOTE: If you want to customise the 'path', use the flags '--defaulting-path' or '--validation-path'.
-// +kubebuilder:webhook:path=/validate-paas-example-com-v1alpha1-prometheusinstance,mutating=false,failurePolicy=fail,sideEffects=None,groups=paas.example.com,resources=prometheusinstances,verbs=create,versions=v1alpha1,name=vprometheusinstance-v1alpha1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-paas-cncp-nl-v1alpha1-prometheusinstance,mutating=false,failurePolicy=fail,sideEffects=None,groups=paas.cncp.nl,resources=prometheusinstances,verbs=create,versions=v1alpha1,name=vprometheusinstance-v1alpha1.kb.io,admissionReviewVersions=v1
 
 // PrometheusInstanceCustomValidator validates that a namespace has at most
 // one PrometheusInstance -- part of the monitoring/logging stack singleton

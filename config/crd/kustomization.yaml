@@ -2,16 +2,16 @@
 # since it depends on service name and namespace that are out of this kustomize package.
 # It should be run by config/default
 resources:
-- bases/paas.example.com_postgresclusters.yaml
-- bases/paas.example.com_valkeyclusters.yaml
-- bases/paas.example.com_grafanainstances.yaml
-- bases/paas.example.com_mariadbclusters.yaml
-- bases/paas.example.com_rabbitmqclusters.yaml
-- bases/paas.example.com_prometheusinstances.yaml
-- bases/paas.example.com_mongodbclusters.yaml
-- bases/paas.example.com_kafkaclusters.yaml
-- bases/paas.example.com_lokiinstances.yaml
-- bases/paas.example.com_alloyinstances.yaml
+- bases/paas.cncp.nl_postgresclusters.yaml
+- bases/paas.cncp.nl_valkeyclusters.yaml
+- bases/paas.cncp.nl_grafanainstances.yaml
+- bases/paas.cncp.nl_mariadbclusters.yaml
+- bases/paas.cncp.nl_rabbitmqclusters.yaml
+- bases/paas.cncp.nl_prometheusinstances.yaml
+- bases/paas.cncp.nl_mongodbclusters.yaml
+- bases/paas.cncp.nl_kafkaclusters.yaml
+- bases/paas.cncp.nl_lokiinstances.yaml
+- bases/paas.cncp.nl_alloyinstances.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

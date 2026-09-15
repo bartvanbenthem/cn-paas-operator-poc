@@ -38,9 +38,9 @@ type MongoDBClusterReconciler = reconciler.GenericReconciler[paasv1alpha1.MongoD
 // registering with the manager and in logs/events.
 const MongoDBClusterControllerName = "mongodbcluster"
 
-// +kubebuilder:rbac:groups=paas.example.com,resources=mongodbclusters,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=paas.example.com,resources=mongodbclusters/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=paas.example.com,resources=mongodbclusters/finalizers,verbs=update
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=mongodbclusters,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=mongodbclusters/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=mongodbclusters/finalizers,verbs=update
 // +kubebuilder:rbac:groups=psmdb.percona.com,resources=perconaservermongodbs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=grafana.integreatly.org,resources=grafanadashboards,verbs=get;list;watch;create;update;patch;delete

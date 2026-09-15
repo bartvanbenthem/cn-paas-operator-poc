@@ -24,7 +24,7 @@ var GVK = schema.GroupVersionKind{Group: Group, Version: Version, Kind: Kind}
 
 // Build returns the desired Ingress routing spec.Host to
 // backendServiceName:backendPort at path "/". owner/fieldManager set the
-// same paas.example.com/owner and app.kubernetes.io/managed-by labels every
+// same paas.cncp.nl/owner and app.kubernetes.io/managed-by labels every
 // other object this operator manages carries.
 func Build(spec *paasv1alpha1.IngressSpec, name, namespace, owner, fieldManager, backendServiceName string, backendPort int32) *unstructured.Unstructured {
 	pathType := "Prefix"
@@ -69,7 +69,7 @@ func Build(spec *paasv1alpha1.IngressSpec, name, namespace, owner, fieldManager,
 	u.SetNamespace(namespace)
 	u.SetLabels(map[string]string{
 		"app.kubernetes.io/managed-by": fieldManager,
-		"paas.example.com/owner":       owner,
+		"paas.cncp.nl/owner":           owner,
 	})
 	if len(spec.Annotations) > 0 {
 		u.SetAnnotations(spec.Annotations)

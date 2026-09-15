@@ -136,12 +136,12 @@ func (Adapter) TargetName(crName string) string { return crName }
 func (Adapter) ObjectKind() string   { return "Kafka" }
 func (Adapter) FieldManager() string { return FieldManager }
 
-// commonLabels returns the app.kubernetes.io/managed-by + paas.example.com/owner
+// commonLabels returns the app.kubernetes.io/managed-by + paas.cncp.nl/owner
 // pair every object this adapter creates carries.
 func commonLabels(owner string) map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/managed-by": FieldManager,
-		"paas.example.com/owner":       owner,
+		"paas.cncp.nl/owner":           owner,
 	}
 }
 

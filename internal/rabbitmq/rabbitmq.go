@@ -129,12 +129,12 @@ func (Adapter) SetIngressClassName(cr *paasv1alpha1.RabbitMQCluster, className s
 	cr.Spec.Ingress.IngressClassName = className
 }
 
-// commonLabels returns the app.kubernetes.io/managed-by + paas.example.com/owner
+// commonLabels returns the app.kubernetes.io/managed-by + paas.cncp.nl/owner
 // pair every object this adapter creates carries.
 func commonLabels(owner string) map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/managed-by": FieldManager,
-		"paas.example.com/owner":       owner,
+		"paas.cncp.nl/owner":           owner,
 	}
 }
 

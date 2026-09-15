@@ -37,7 +37,7 @@ func TestBuild(t *testing.T) {
 	if u.GetName() != "svc-ingress" || u.GetNamespace() != "default" {
 		t.Fatalf("unexpected name/namespace: %s/%s", u.GetNamespace(), u.GetName())
 	}
-	if u.GetLabels()["paas.example.com/owner"] != "owner" {
+	if u.GetLabels()["paas.cncp.nl/owner"] != "owner" {
 		t.Fatalf("expected owner label to be set")
 	}
 	if u.GetAnnotations()["a"] != "b" {

@@ -10,12 +10,12 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-paas-example-com-v1alpha1-grafanainstance
+      path: /validate-paas-cncp-nl-v1alpha1-grafanainstance
   failurePolicy: Fail
   name: vgrafanainstance-v1alpha1.kb.io
   rules:
   - apiGroups:
-    - paas.example.com
+    - paas.cncp.nl
     apiVersions:
     - v1alpha1
     operations:
@@ -29,12 +29,12 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-paas-example-com-v1alpha1-lokiinstance
+      path: /validate-paas-cncp-nl-v1alpha1-lokiinstance
   failurePolicy: Fail
   name: vlokiinstance-v1alpha1.kb.io
   rules:
   - apiGroups:
-    - paas.example.com
+    - paas.cncp.nl
     apiVersions:
     - v1alpha1
     operations:
@@ -48,12 +48,12 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-paas-example-com-v1alpha1-prometheusinstance
+      path: /validate-paas-cncp-nl-v1alpha1-prometheusinstance
   failurePolicy: Fail
   name: vprometheusinstance-v1alpha1.kb.io
   rules:
   - apiGroups:
-    - paas.example.com
+    - paas.cncp.nl
     apiVersions:
     - v1alpha1
     operations:

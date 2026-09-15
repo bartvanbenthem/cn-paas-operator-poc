@@ -39,7 +39,7 @@ func SetupLokiInstanceWebhookWithManager(mgr ctrl.Manager) error {
 }
 
 // NOTE: If you want to customise the 'path', use the flags '--defaulting-path' or '--validation-path'.
-// +kubebuilder:webhook:path=/validate-paas-example-com-v1alpha1-lokiinstance,mutating=false,failurePolicy=fail,sideEffects=None,groups=paas.example.com,resources=lokiinstances,verbs=create,versions=v1alpha1,name=vlokiinstance-v1alpha1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-paas-cncp-nl-v1alpha1-lokiinstance,mutating=false,failurePolicy=fail,sideEffects=None,groups=paas.cncp.nl,resources=lokiinstances,verbs=create,versions=v1alpha1,name=vlokiinstance-v1alpha1.kb.io,admissionReviewVersions=v1
 
 // LokiInstanceCustomValidator validates that a namespace has at most one
 // LokiInstance -- part of the monitoring/logging stack singleton rule shared

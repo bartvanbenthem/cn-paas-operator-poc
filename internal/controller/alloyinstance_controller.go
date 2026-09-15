@@ -37,9 +37,9 @@ type AlloyInstanceReconciler = reconciler.GenericReconciler[paasv1alpha1.AlloyIn
 // registering with the manager and in logs/events.
 const AlloyInstanceControllerName = "alloyinstance"
 
-// +kubebuilder:rbac:groups=paas.example.com,resources=alloyinstances,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=paas.example.com,resources=alloyinstances/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=paas.example.com,resources=alloyinstances/finalizers,verbs=update
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=alloyinstances,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=alloyinstances/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=alloyinstances/finalizers,verbs=update
 // +kubebuilder:rbac:groups=collectors.grafana.com,resources=alloys,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 

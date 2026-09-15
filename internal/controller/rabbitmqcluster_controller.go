@@ -38,9 +38,9 @@ type RabbitMQClusterReconciler = reconciler.GenericReconciler[paasv1alpha1.Rabbi
 // registering with the manager and in logs/events.
 const RabbitMQClusterControllerName = "rabbitmqcluster"
 
-// +kubebuilder:rbac:groups=paas.example.com,resources=rabbitmqclusters,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=paas.example.com,resources=rabbitmqclusters/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=paas.example.com,resources=rabbitmqclusters/finalizers,verbs=update
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=rabbitmqclusters,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=rabbitmqclusters/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=rabbitmqclusters/finalizers,verbs=update
 // +kubebuilder:rbac:groups=rabbitmq.com,resources=rabbitmqclusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update;patch;delete

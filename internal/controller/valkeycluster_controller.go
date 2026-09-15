@@ -37,9 +37,9 @@ type ValkeyClusterReconciler = reconciler.GenericReconciler[paasv1alpha1.ValkeyC
 // registering with the manager and in logs/events.
 const ValkeyClusterControllerName = "valkeycluster"
 
-// +kubebuilder:rbac:groups=paas.example.com,resources=valkeyclusters,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=paas.example.com,resources=valkeyclusters/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=paas.example.com,resources=valkeyclusters/finalizers,verbs=update
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=valkeyclusters,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=valkeyclusters/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=paas.cncp.nl,resources=valkeyclusters/finalizers,verbs=update
 // +kubebuilder:rbac:groups=valkey.io,resources=valkeyclusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;watch;create;update;patch;delete

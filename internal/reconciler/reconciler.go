@@ -44,7 +44,7 @@ import (
 
 // FinalizerName is added to every paas CR reconciled through this package,
 // gating removal of the CR on cleanup of its foreign target object.
-const FinalizerName = "paas.example.com/cleanup"
+const FinalizerName = "paas.cncp.nl/cleanup"
 
 // TargetStatus is the subset of a foreign target object's status that every
 // Adapter extracts and every paas CR mirrors back onto itself.

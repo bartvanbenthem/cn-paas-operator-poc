@@ -265,7 +265,7 @@ func (Adapter) BuildManifest(cr *paasv1alpha1.LokiInstance, name, namespace, own
 	u.SetNamespace(namespace)
 	u.SetLabels(map[string]string{
 		"app.kubernetes.io/managed-by": FieldManager,
-		"paas.example.com/owner":       ownerName,
+		"paas.cncp.nl/owner":           ownerName,
 	})
 	u.Object["spec"] = lokiSpec
 

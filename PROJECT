@@ -3,7 +3,7 @@
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
 cliVersion: 4.15.0
-domain: example.com
+domain: cncp.nl
 layout:
 - go.kubebuilder.io/v4
 projectName: paas-operator
@@ -13,7 +13,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: example.com
+  domain: cncp.nl
   group: paas
   kind: PostgresCluster
   path: github.com/bartvanbenthem/paas-operator/api/v1alpha1
@@ -22,7 +22,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: example.com
+  domain: cncp.nl
   group: paas
   kind: ValkeyCluster
   path: github.com/bartvanbenthem/paas-operator/api/v1alpha1
@@ -31,7 +31,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: example.com
+  domain: cncp.nl
   group: paas
   kind: GrafanaInstance
   path: github.com/bartvanbenthem/paas-operator/api/v1alpha1
@@ -43,7 +43,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: example.com
+  domain: cncp.nl
   group: paas
   kind: MariaDBCluster
   path: github.com/bartvanbenthem/paas-operator/api/v1alpha1
@@ -52,7 +52,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: example.com
+  domain: cncp.nl
   group: paas
   kind: RabbitMQCluster
   path: github.com/bartvanbenthem/paas-operator/api/v1alpha1
@@ -61,7 +61,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: example.com
+  domain: cncp.nl
   group: paas
   kind: PrometheusInstance
   path: github.com/bartvanbenthem/paas-operator/api/v1alpha1
@@ -73,7 +73,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: example.com
+  domain: cncp.nl
   group: paas
   kind: MongoDBCluster
   path: github.com/bartvanbenthem/paas-operator/api/v1alpha1
@@ -82,7 +82,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: example.com
+  domain: cncp.nl
   group: paas
   kind: KafkaCluster
   path: github.com/bartvanbenthem/paas-operator/api/v1alpha1
@@ -91,7 +91,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: example.com
+  domain: cncp.nl
   group: paas
   kind: LokiInstance
   path: github.com/bartvanbenthem/paas-operator/api/v1alpha1
@@ -103,7 +103,7 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: example.com
+  domain: cncp.nl
   group: paas
   kind: AlloyInstance
   path: github.com/bartvanbenthem/paas-operator/api/v1alpha1
