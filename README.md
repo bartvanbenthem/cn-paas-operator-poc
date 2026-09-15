@@ -1,4 +1,4 @@
-# paas-operator
+# PaaS platform operator
 
 A meta operator, built with [kubebuilder](https://book.kubebuilder.io)/
 `controller-runtime`, that fronts other operators' large CRDs with small,
